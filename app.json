@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "YardSafe",
+    "slug": "yardsafe",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "yardsafe",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#2A3226"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.yardsafe.app",
+      "buildNumber": "1"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#2A3226"
+      },
+      "package": "com.yardsafe.app",
+      "versionCode": 1
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
