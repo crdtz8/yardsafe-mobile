@@ -43,7 +43,9 @@ export default function AppLayout() {
       <Stack.Screen name="permits"          options={{ title: 'Safety Permits' }} />
       <Stack.Screen name="environmental"   options={{ title: 'Environmental' }} />
       <Stack.Screen name="notifications"   options={{ title: 'Notifications' }} />
-      <Stack.Screen name="training-player" options={{ title: 'Training', headerBackTitle: 'Back' }} />
+      <Stack.Screen name="training-player" options={{ title: 'Training',          headerBackTitle: 'Back' }} />
+      <Stack.Screen name="sds-detail"      options={{ title: 'Chemical Details',  headerBackTitle: 'Back' }} />
+      <Stack.Screen name="pdf-viewer"      options={{ title: 'Document',          headerBackTitle: 'Back' }} />
     </Stack>
   );
 }

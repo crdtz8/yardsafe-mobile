@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback, useLayoutEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl,
-  Modal, ScrollView, TextInput, TouchableOpacity, Alert, Platform, KeyboardAvoidingView, Linking,
+  Modal, ScrollView, TextInput, TouchableOpacity, Alert, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from 'expo-router';
+import { useNavigation, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
@@ -242,7 +242,14 @@ export default function DocumentsScreen() {
             </View>
           }
           renderItem={({ item }) => (
-            <TouchableOpacity style={s.row} onPress={() => isManager ? openEditDoc(item) : item.file_url ? Linking.openURL(item.file_url) : null} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={s.row}
+              onPress={() => {
+                if (isManager) { openEditDoc(item); return; }
+                if (item.file_url) router.push({ pathname: '/(tabs)/pdf-viewer', params: { url: item.file_url, title: item.title } } as any);
+              }}
+              activeOpacity={0.7}
+            >
               <Ionicons name="document-text-outline" size={22} color={colors.greenMd} style={s.icon} />
               <View style={s.body}>
                 <Text style={s.title}>{item.title}</Text>
@@ -289,7 +296,11 @@ export default function DocumentsScreen() {
               </View>
             }
             renderItem={({ item }) => (
-              <TouchableOpacity style={s.row} onPress={() => isManager ? openEditSds(item) : item.file_url ? Linking.openURL(item.file_url) : null} activeOpacity={0.7}>
+              <TouchableOpacity
+                style={s.row}
+                onPress={() => router.push({ pathname: '/(tabs)/sds-detail', params: { id: item.id } } as any)}
+                activeOpacity={0.7}
+              >
                 {item.signal_word && item.signal_word !== 'none' ? (
                   <View style={[s.signalBadge, { backgroundColor: SIGNAL_COLOR[item.signal_word] + '20', borderColor: SIGNAL_COLOR[item.signal_word] + '60' }]}>
                     <Text style={[s.signalTxt, { color: SIGNAL_COLOR[item.signal_word] }]}>{SIGNAL_LABEL[item.signal_word]}</Text>
