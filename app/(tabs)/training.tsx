@@ -1,13 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, SectionList, TouchableOpacity, StyleSheet,
-  ActivityIndicator, RefreshControl,
+  ActivityIndicator, RefreshControl, Linking, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
-type Course = { id: string; title: string; type: string; duration: string | null };
+type Course = { id: string; title: string; type: string; duration: string | null; video_url: string | null; doc_url: string | null };
 type Section = { title: string; data: Course[] };
 
 const TYPE_ICON: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
@@ -24,7 +24,7 @@ export default function TrainingScreen() {
   const load = useCallback(async () => {
     const { data } = await supabase
       .from('trainings')
-      .select('id, title, type, duration, categories(name)')
+      .select('id, title, type, duration, video_url, doc_url, categories(name)')
       .order('title');
 
     if (data) {
@@ -32,7 +32,7 @@ export default function TrainingScreen() {
       (data as any[]).forEach(t => {
         const cat = (t.categories as any)?.name ?? 'Uncategorized';
         if (!grouped[cat]) grouped[cat] = [];
-        grouped[cat].push({ id: t.id, title: t.title, type: t.type ?? 'document', duration: t.duration });
+        grouped[cat].push({ id: t.id, title: t.title, type: t.type ?? 'document', duration: t.duration, video_url: t.video_url ?? null, doc_url: t.doc_url ?? null });
       });
 
       const built: Section[] = Object.entries(grouped)
@@ -52,6 +52,15 @@ export default function TrainingScreen() {
   useEffect(() => { load(); }, [load]);
 
   const onRefresh = () => { setRefreshing(true); load(); };
+
+  const openCourse = (item: Course) => {
+    const url = item.type === 'video' ? item.video_url : item.doc_url;
+    if (!url) {
+      Alert.alert('No content', 'This course has no linked video or document yet.');
+      return;
+    }
+    Linking.openURL(url).catch(() => Alert.alert('Error', 'Could not open course content.'));
+  };
 
   const filteredSections: Section[] = filter === 'all'
     ? sections
@@ -99,24 +108,32 @@ export default function TrainingScreen() {
             <Text style={styles.sectionCount}>{section.data.length}</Text>
           </View>
         )}
-        renderItem={({ item, index, section }) => (
-          <View style={[
-            styles.row,
-            index === 0 && styles.rowFirst,
-            index === section.data.length - 1 && styles.rowLast,
-          ]}>
-            <Ionicons name={TYPE_ICON[item.type] ?? 'document-outline'} size={20} color={colors.greenMd} style={styles.rowIcon} />
-            <View style={styles.rowBody}>
-              <Text style={styles.rowTitle}>{item.title}</Text>
-              {item.duration && <Text style={styles.rowDur}>{item.duration}</Text>}
-            </View>
-            <View style={[styles.typeBadge, item.type === 'video' && styles.typeBadgeVideo]}>
-              <Text style={[styles.typeText, item.type === 'video' && styles.typeTextVideo]}>
-                {item.type.toUpperCase()}
-              </Text>
-            </View>
-          </View>
-        )}
+        renderItem={({ item, index, section }) => {
+          const hasContent = !!(item.type === 'video' ? item.video_url : item.doc_url);
+          return (
+            <TouchableOpacity
+              style={[
+                styles.row,
+                index === 0 && styles.rowFirst,
+                index === section.data.length - 1 && styles.rowLast,
+              ]}
+              onPress={() => openCourse(item)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name={TYPE_ICON[item.type] ?? 'document-outline'} size={20} color={hasContent ? colors.greenMd : colors.muted} style={styles.rowIcon} />
+              <View style={styles.rowBody}>
+                <Text style={styles.rowTitle}>{item.title}</Text>
+                {item.duration && <Text style={styles.rowDur}>{item.duration}</Text>}
+              </View>
+              <View style={[styles.typeBadge, item.type === 'video' && styles.typeBadgeVideo]}>
+                <Text style={[styles.typeText, item.type === 'video' && styles.typeTextVideo]}>
+                  {item.type.toUpperCase()}
+                </Text>
+              </View>
+              {hasContent && <Ionicons name="chevron-forward" size={14} color={colors.muted} style={{ marginLeft: 6 }} />}
+            </TouchableOpacity>
+          );
+        }}
         SectionSeparatorComponent={() => <View style={{ height: 16 }} />}
         ItemSeparatorComponent={() => <View style={styles.sep} />}
       />

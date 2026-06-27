@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl,
-  Alert, TouchableOpacity,
+  Alert, TouchableOpacity, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
@@ -10,7 +10,7 @@ import { supabase } from '@/lib/supabase';
 type Assignment = {
   id: string;
   due_date: string | null;
-  trainings: { title: string; type: string; duration: string | null } | null;
+  trainings: { title: string; type: string; duration: string | null; video_url: string | null; doc_url: string | null } | null;
 };
 
 export default function MyTrainingsScreen() {
@@ -23,7 +23,7 @@ export default function MyTrainingsScreen() {
     if (!user) { setLoading(false); return; }
     const { data } = await supabase
       .from('training_assignments')
-      .select('id, due_date, trainings(title, type, duration)')
+      .select('id, due_date, trainings(title, type, duration, video_url, doc_url)')
       .eq('user_id', user.id)
       .is('completed_at', null)
       .order('due_date', { ascending: true, nullsFirst: false });
@@ -33,6 +33,16 @@ export default function MyTrainingsScreen() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const openTraining = useCallback((item: Assignment) => {
+    const t = item.trainings as any;
+    const url = t?.type === 'video' ? t?.video_url : t?.doc_url;
+    if (!url) {
+      Alert.alert('No content', 'This training has no linked video or document yet.');
+      return;
+    }
+    Linking.openURL(url).catch(() => Alert.alert('Error', 'Could not open training content.'));
+  }, []);
 
   const markComplete = useCallback((item: Assignment) => {
     const t = item.trainings as any;
@@ -76,12 +86,13 @@ export default function MyTrainingsScreen() {
       renderItem={({ item }) => {
         const t = item.trainings as any;
         const overdue = item.due_date && new Date(item.due_date) < new Date();
+        const hasContent = !!(t?.type === 'video' ? t?.video_url : t?.doc_url);
         return (
-          <View style={s.row}>
+          <TouchableOpacity style={s.row} onPress={() => openTraining(item)} activeOpacity={0.7}>
             <Ionicons
               name={t?.type === 'video' ? 'play-circle-outline' : 'document-text-outline'}
               size={22}
-              color={colors.greenMd}
+              color={hasContent ? colors.greenMd : colors.muted}
               style={s.icon}
             />
             <View style={s.body}>
@@ -97,7 +108,7 @@ export default function MyTrainingsScreen() {
             <TouchableOpacity style={s.checkBtn} onPress={() => markComplete(item)} activeOpacity={0.7}>
               <Ionicons name="checkmark" size={16} color="#fff" />
             </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         );
       }}
     />
