@@ -21,11 +21,11 @@ type NotifType =
 type NotifRow = {
   id: string;
   recipient_id: string;
-  subject: string | null;  // may not exist in all DB versions — fall back to type label
+  subject: string | null;
+  body: string | null;
   type: string | null;
   sent_at: string | null;
   read: boolean | null;
-  recipient_email: string | null;
   created_at: string;
 };
 
@@ -89,12 +89,14 @@ type IconConfig = {
   color: string;
 };
 
-const ICON_CONFIG: Record<NotifType, IconConfig> = {
+const ICON_CONFIG: Record<string, IconConfig> = {
   cert_expiry:         { name: 'ribbon-outline',            color: '#F59E0B' },
   compliance_due:      { name: 'calendar-outline',          color: '#F59E0B' },
   compliance_overdue:  { name: 'alert-circle-outline',      color: colors.red },
   incident:            { name: 'warning-outline',           color: colors.red },
-  custom:              { name: 'mail-outline',              color: colors.greenMd },
+  custom:              { name: 'mail-outline',              color: '#3B82F6' },
+  training_assignment: { name: 'shield-checkmark-outline',  color: colors.greenMd },
+  training_unassigned: { name: 'shield-outline',            color: colors.muted },
   system:              { name: 'information-circle-outline',color: colors.muted },
 };
 
@@ -102,12 +104,14 @@ const getIconConfig = (type: string | null): IconConfig =>
   ICON_CONFIG[(type as NotifType) ?? 'system'] ?? ICON_CONFIG.system;
 
 const TYPE_LABEL: Record<string, string> = {
-  cert_expiry:        'Certification Expiring',
-  compliance_due:     'Compliance Item Due',
-  compliance_overdue: 'Compliance Item Overdue',
-  incident:           'Incident Alert',
-  custom:             'Message',
-  system:             'System Notification',
+  cert_expiry:         'Certification Expiring',
+  compliance_due:      'Compliance Item Due',
+  compliance_overdue:  'Compliance Item Overdue',
+  incident:            'Incident Alert',
+  custom:              'Message',
+  training_assignment: 'Training Assigned',
+  training_unassigned: 'Training Removed',
+  system:              'System Notification',
 };
 
 const getLabel = (item: NotifRow): string =>
@@ -122,6 +126,7 @@ export default function NotificationsScreen() {
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [marking,    setMarking]    = useState(false);
+  const [expanded,   setExpanded]   = useState<string | null>(null);
 
   const unreadCount = items.filter(n => n.read === false).length;
 
@@ -150,7 +155,7 @@ export default function NotificationsScreen() {
 
       const { data, error } = await supabase
         .from('notification_log')
-        .select('id, recipient_id, type, sent_at, created_at')
+        .select('id, recipient_id, type, subject, body, sent_at, read, created_at')
         .eq('recipient_id', user.id)
         .order('created_at', { ascending: false })
         .limit(100);
@@ -185,10 +190,15 @@ export default function NotificationsScreen() {
     setMarking(false);
   }, [items]);
 
+  const handleDelete = useCallback(async (id: string) => {
+    setItems(prev => prev.filter(n => n.id !== id));
+    setExpanded(prev => prev === id ? null : prev);
+    await supabase.from('notification_log').delete().eq('id', id);
+  }, []);
+
   const handlePress = useCallback((item: NotifRow) => {
-    if (item.read !== true) {
-      markRead(item.id);
-    }
+    if (item.read !== true) markRead(item.id);
+    setExpanded(prev => prev === item.id ? null : item.id);
   }, [markRead]);
 
   // ─── Rendering ──────────────────────────────────────────────────────────────
@@ -255,6 +265,7 @@ export default function NotificationsScreen() {
           const nextItem = flatData[index + 1];
           const showSep = nextItem?.kind === 'notif';
 
+          const isExpanded = expanded === item.id;
           return (
             <>
               <TouchableOpacity
@@ -269,21 +280,43 @@ export default function NotificationsScreen() {
 
                 {/* Content */}
                 <View style={s.rowBody}>
-                  <Text
-                    style={[s.subject, isUnread && s.subjectUnread]}
-                    numberOfLines={2}
-                  >
+                  <Text style={[s.subject, isUnread && s.subjectUnread]} numberOfLines={isExpanded ? undefined : 2}>
                     {getLabel(item)}
                   </Text>
-                  <Text style={s.time}>
-                    {relTime(item.sent_at ?? item.created_at)}
-                  </Text>
+                  <Text style={s.time}>{relTime(item.sent_at ?? item.created_at)}</Text>
                 </View>
 
-                {/* Unread dot */}
-                {isUnread && <View style={s.unreadDot} />}
+                {/* Right side */}
+                <View style={{ alignItems: 'center', gap: 6 }}>
+                  {isUnread && <View style={s.unreadDot} />}
+                  <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={colors.muted} />
+                </View>
               </TouchableOpacity>
-              {showSep && <View style={s.sep} />}
+
+              {/* Expanded detail */}
+              {isExpanded && (
+                <View style={s.detail}>
+                  {item.body ? (
+                    <Text style={s.detailBody}>{item.body}</Text>
+                  ) : (
+                    <Text style={[s.detailBody, { color: colors.muted, fontStyle: 'italic' }]}>No additional details.</Text>
+                  )}
+                  <View style={s.detailActions}>
+                    {isUnread && (
+                      <TouchableOpacity style={s.actionBtn} onPress={() => markRead(item.id)}>
+                        <Ionicons name="checkmark-circle-outline" size={14} color={colors.greenMd} />
+                        <Text style={[s.actionTxt, { color: colors.greenMd }]}>Mark read</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity style={[s.actionBtn, s.actionDelete]} onPress={() => handleDelete(item.id)}>
+                      <Ionicons name="trash-outline" size={14} color={colors.red} />
+                      <Text style={[s.actionTxt, { color: colors.red }]}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {showSep && !isExpanded && <View style={s.sep} />}
             </>
           );
         }}
@@ -435,6 +468,42 @@ const s = StyleSheet.create({
     height: 1,
     backgroundColor: colors.border,
     marginLeft: 66,
+  },
+
+  // Expanded detail panel
+  detail: {
+    backgroundColor: colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  detailBody: {
+    fontSize: 13,
+    color: colors.text,
+    lineHeight: 20,
+    marginBottom: 14,
+  },
+  detailActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: colors.greenMd,
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  actionDelete: {
+    borderColor: colors.red,
+  },
+  actionTxt: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 
   // Header button
