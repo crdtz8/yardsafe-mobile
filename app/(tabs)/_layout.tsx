@@ -1,58 +1,45 @@
-import { Tabs } from 'expo-router';
+import { Stack } from 'expo-router';
+import { TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
+import { signOut } from '@/lib/auth';
 
-type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
-
-function TabIcon({ name, color, size }: { name: IoniconsName; color: string; size: number }) {
-  return <Ionicons name={name} size={size} color={color} />;
+function SignOutBtn() {
+  const handle = () =>
+    Alert.alert('Sign out', 'Are you sure?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign Out', style: 'destructive', onPress: () => signOut() },
+    ]);
+  return (
+    <TouchableOpacity onPress={handle} style={{ paddingHorizontal: 4 }}>
+      <Ionicons name="log-out-outline" size={22} color={colors.cream} />
+    </TouchableOpacity>
+  );
 }
 
-export default function TabLayout() {
+const baseOptions = {
+  headerStyle:        { backgroundColor: colors.greenDk },
+  headerTintColor:    colors.cream,
+  headerTitleStyle:   { fontWeight: '700' as const, letterSpacing: 0.5 },
+  headerBackTitle:    'Home',
+};
+
+export default function AppLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerStyle:      { backgroundColor: colors.greenDk },
-        headerTintColor:  colors.cream,
-        headerTitleStyle: { fontWeight: '700', letterSpacing: 0.5 },
-        tabBarStyle: {
-          backgroundColor: colors.greenDk,
-          borderTopColor:  colors.greenMd,
-          borderTopWidth:  1,
-        },
-        tabBarActiveTintColor:   colors.cream,
-        tabBarInactiveTintColor: colors.greenLt,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Dashboard',
-          tabBarIcon: ({ color, size }) => <TabIcon name="home-outline" color={color} size={size} />,
-        }}
-      />
-      <Tabs.Screen
-        name="training"
-        options={{
-          title: 'Training',
-          tabBarIcon: ({ color, size }) => <TabIcon name="school-outline" color={color} size={size} />,
-        }}
-      />
-      <Tabs.Screen
-        name="incidents"
-        options={{
-          title: 'Incidents',
-          tabBarIcon: ({ color, size }) => <TabIcon name="warning-outline" color={color} size={size} />,
-        }}
-      />
-      <Tabs.Screen
-        name="more"
-        options={{
-          title: 'More',
-          tabBarIcon: ({ color, size }) => <TabIcon name="menu-outline" color={color} size={size} />,
-        }}
-      />
-    </Tabs>
+    <Stack screenOptions={baseOptions}>
+      <Stack.Screen name="index"          options={{ headerShown: false }} />
+      <Stack.Screen name="training"       options={{ title: 'Training' }} />
+      <Stack.Screen name="incidents"      options={{ title: 'Incidents' }} />
+      <Stack.Screen name="employees"      options={{ title: 'Employees' }} />
+      <Stack.Screen name="library"        options={{ title: 'Training Library' }} />
+      <Stack.Screen name="inspections"    options={{ title: 'Safety Inspections' }} />
+      <Stack.Screen name="corrective"     options={{ title: 'Corrective Actions' }} />
+      <Stack.Screen name="certifications" options={{ title: 'Certifications' }} />
+      <Stack.Screen name="documents"      options={{ title: 'Documents' }} />
+      <Stack.Screen name="equipment"         options={{ title: 'Equipment' }} />
+      <Stack.Screen name="my-trainings"     options={{ title: 'My Trainings' }} />
+      <Stack.Screen name="my-history"       options={{ title: 'My History' }} />
+      <Stack.Screen name="inspection/[id]"  options={{ title: 'Inspection' }} />
+    </Stack>
   );
 }

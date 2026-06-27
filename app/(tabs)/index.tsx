@@ -1,23 +1,129 @@
-import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Image, RefreshControl, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
-import { getProfile, getCompany } from '@/lib/auth';
+import { getProfile, getCompany, signOut } from '@/lib/auth';
 
 type Profile = { name: string; role: string; company_id: string };
-type Stats   = { assigned: number; completed: number; overdue: number };
+
+type TileDef = {
+  id:    string;
+  label: string;
+  icon:  React.ComponentProps<typeof Ionicons>['name'];
+  unit:  string;
+  route: string;
+  roles: string[];
+  count: (companyId: string, userId: string) => Promise<number>;
+};
+
+const TILES: TileDef[] = [
+  // ── Employee-only tiles ──────────────────────────────────────────────────
+  {
+    id: 'my_trainings', label: 'MY TRAININGS', icon: 'school-outline', unit: 'assigned', route: '/(tabs)/my-trainings',
+    roles: ['employee'],
+    count: async (_cid, uid) => {
+      const { count } = await supabase.from('training_assignments').select('id', { count: 'exact', head: true }).eq('user_id', uid).is('completed_at', null);
+      return count ?? 0;
+    },
+  },
+  {
+    id: 'my_history', label: 'MY HISTORY', icon: 'time-outline', unit: 'completed', route: '/(tabs)/my-history',
+    roles: ['employee'],
+    count: async (_cid, uid) => {
+      const { count } = await supabase.from('training_assignments').select('id', { count: 'exact', head: true }).eq('user_id', uid).not('completed_at', 'is', null);
+      return count ?? 0;
+    },
+  },
+  // ── Admin / manager tiles ────────────────────────────────────────────────
+  {
+    id: 'trainings', label: 'ALL TRAININGS', icon: 'shield-outline', unit: 'trainings', route: '/(tabs)/training',
+    roles: ['admin', 'safety_manager', 'manager'],
+    count: async (cid) => {
+      const { count } = await supabase.from('trainings').select('id', { count: 'exact', head: true }).eq('company_id', cid);
+      return count ?? 0;
+    },
+  },
+  {
+    id: 'employees', label: 'EMPLOYEES', icon: 'people-outline', unit: 'employees', route: '/(tabs)/employees',
+    roles: ['admin', 'safety_manager', 'manager'],
+    count: async (cid) => {
+      const { count } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('company_id', cid).is('archived_at', null);
+      return count ?? 0;
+    },
+  },
+  {
+    id: 'library', label: 'TRAINING LIBRARY', icon: 'folder-open-outline', unit: 'courses', route: '/(tabs)/library',
+    roles: ['admin', 'safety_manager', 'manager'],
+    count: async (cid) => {
+      const { count } = await supabase.from('trainings').select('id', { count: 'exact', head: true }).eq('company_id', cid);
+      return count ?? 0;
+    },
+  },
+  {
+    id: 'inspections', label: 'SAFETY INSPECTIONS', icon: 'clipboard-outline', unit: 'total', route: '/(tabs)/inspections',
+    roles: ['admin', 'safety_manager', 'manager'],
+    count: async (cid) => {
+      const { count } = await supabase.from('inspections').select('id', { count: 'exact', head: true }).eq('company_id', cid);
+      return count ?? 0;
+    },
+  },
+  {
+    id: 'incidents', label: 'INCIDENTS', icon: 'warning-outline', unit: 'total', route: '/(tabs)/incidents',
+    roles: ['admin', 'safety_manager', 'manager'],
+    count: async (cid) => {
+      const { count } = await supabase.from('incidents').select('id', { count: 'exact', head: true }).eq('company_id', cid);
+      return count ?? 0;
+    },
+  },
+  {
+    id: 'corrective', label: 'CORRECTIVE ACTIONS', icon: 'checkmark-circle-outline', unit: 'actions', route: '/(tabs)/corrective',
+    roles: ['admin', 'safety_manager', 'manager'],
+    count: async (cid) => {
+      const { count } = await supabase.from('corrective_actions').select('id', { count: 'exact', head: true }).eq('company_id', cid);
+      return count ?? 0;
+    },
+  },
+  {
+    id: 'certifications', label: 'CERTIFICATIONS', icon: 'ribbon-outline', unit: 'types', route: '/(tabs)/certifications',
+    roles: ['admin', 'safety_manager', 'manager'],
+    count: async (cid) => {
+      const { count } = await supabase.from('certification_types').select('id', { count: 'exact', head: true }).eq('company_id', cid);
+      return count ?? 0;
+    },
+  },
+  // ── Shared tiles (all roles) ─────────────────────────────────────────────
+  {
+    id: 'documents', label: 'DOCUMENTS', icon: 'document-text-outline', unit: 'docs', route: '/(tabs)/documents',
+    roles: ['admin', 'safety_manager', 'manager', 'employee'],
+    count: async (cid) => {
+      const { count } = await supabase.from('documents').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('is_active', true);
+      return count ?? 0;
+    },
+  },
+  {
+    id: 'equipment', label: 'EQUIPMENT', icon: 'construct-outline', unit: 'items', route: '/(tabs)/equipment',
+    roles: ['admin', 'safety_manager', 'manager'],
+    count: async (cid) => {
+      const { count } = await supabase.from('equipment').select('id', { count: 'exact', head: true }).eq('company_id', cid);
+      return count ?? 0;
+    },
+  },
+];
 
 export default function DashboardScreen() {
-  const [profile,  setProfile]  = useState<Profile | null>(null);
-  const [company,  setCompany]  = useState<{ name: string; plan: string } | null>(null);
-  const [stats,    setStats]    = useState<Stats>({ assigned: 0, completed: 0, overdue: 0 });
-  const [loading,  setLoading]  = useState(true);
+  const insets = useSafeAreaInsets();
+  const [profile,    setProfile]    = useState<Profile | null>(null);
+  const [company,    setCompany]    = useState<{ name: string } | null>(null);
+  const [counts,     setCounts]     = useState<Record<string, number>>({});
+  const [empCount,   setEmpCount]   = useState(0);
+  const [overdue,    setOverdue]    = useState(0);
+  const [loading,    setLoading]    = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function load() {
+  const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
@@ -28,108 +134,142 @@ export default function DashboardScreen() {
     const { company } = await getCompany(profile.company_id);
     if (company) setCompany(company);
 
-    // Training stats
-    const { data: assignments } = await supabase
+    const cid = profile.company_id;
+    const role = profile.role;
+
+    // Employee count for header
+    const { count: ec } = await supabase
+      .from('profiles')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', cid)
+      .is('archived_at', null);
+    setEmpCount(ec ?? 0);
+
+    // Overdue training assignments
+    const today = new Date().toISOString().split('T')[0];
+    const { count: oc } = await supabase
       .from('training_assignments')
-      .select('completed_at')
-      .eq('user_id', user.id);
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', cid)
+      .is('completed_at', null)
+      .lt('due_date', today);
+    setOverdue(oc ?? 0);
 
-    if (assignments) {
-      const completed = assignments.filter(a => a.completed_at).length;
-      setStats({
-        assigned:  assignments.length,
-        completed,
-        overdue:   0, // Phase 3.2 will add due dates
-      });
-    }
-
+    // Tile counts (only for visible tiles)
+    const visible = TILES.filter(t => t.roles.includes(role));
+    const results = await Promise.all(
+      visible.map(async (t) => {
+        const n = await t.count(cid, user.id).catch(() => 0);
+        return [t.id, n] as [string, number];
+      })
+    );
+    setCounts(Object.fromEntries(results));
     setLoading(false);
-  }
+    setRefreshing(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const onRefresh = () => { setRefreshing(true); load(); };
+
+  const role = profile?.role ?? 'employee';
+  const visibleTiles = TILES.filter(t => t.roles.includes(role));
+
+  const handleSignOut = () =>
+    Alert.alert('Sign out', 'Are you sure?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign Out', style: 'destructive', onPress: () => signOut() },
+    ]);
 
   if (loading) {
     return (
-      <View style={styles.center}>
+      <View style={[styles.center, { paddingTop: insets.top }]}>
         <ActivityIndicator color={colors.greenMd} size="large" />
       </View>
     );
   }
 
-  const remaining = stats.assigned - stats.completed;
-  const pct = stats.assigned > 0 ? Math.round((stats.completed / stats.assigned) * 100) : 0;
-
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Greeting */}
-      <View style={styles.greeting}>
-        <Text style={styles.greetingName}>Hi, {profile?.name?.split(' ')[0] ?? 'there'}</Text>
-        {company && <Text style={styles.greetingCo}>{company.name}</Text>}
-      </View>
-
-      {/* Training progress card */}
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>TRAINING PROGRESS</Text>
-        <View style={styles.progressRow}>
-          <Text style={styles.pct}>{pct}%</Text>
-          <Text style={styles.pctSub}>complete</Text>
+    <ScrollView
+      style={styles.container}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.greenMd} />}
+    >
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+        <Image source={require('@/assets/logo-light.png')} style={styles.logo} resizeMode="contain" />
+        <Text style={styles.welcome}>WELCOME BACK</Text>
+        <View style={styles.nameRow}>
+          <Text style={styles.name}>{profile?.name ?? '—'}</Text>
+          <TouchableOpacity onPress={handleSignOut} style={styles.signOutBtn}>
+            <Ionicons name="log-out-outline" size={22} color={colors.greenLt} />
+          </TouchableOpacity>
         </View>
-        <View style={styles.progressBarBg}>
-          <View style={[styles.progressBarFill, { width: `${pct}%` as any }]} />
-        </View>
-        <Text style={styles.progressDetail}>
-          {stats.completed} of {stats.assigned} completed
-          {remaining > 0 ? ` · ${remaining} remaining` : ''}
+        <Text style={styles.meta}>
+          {empCount} {empCount === 1 ? 'EMPLOYEE' : 'EMPLOYEES'}
+          {overdue > 0 ? ` · ${overdue} OVERDUE` : ''}
         </Text>
       </View>
 
-      {/* Stat tiles */}
-      <View style={styles.tiles}>
-        <StatTile label="Assigned"  value={stats.assigned}  />
-        <StatTile label="Done"      value={stats.completed} accent />
-        <StatTile label="Remaining" value={remaining}       />
+      {/* Tile list */}
+      <View style={styles.list}>
+        {visibleTiles.map((tile, i) => (
+          <TouchableOpacity
+            key={tile.id}
+            style={[styles.tile, i < visibleTiles.length - 1 && styles.tileBorder]}
+            activeOpacity={0.6}
+            onPress={() => router.push(tile.route as any)}
+          >
+            <Ionicons name={tile.icon} size={20} color={colors.greenDk} style={styles.tileIcon} />
+            <View style={styles.tileBody}>
+              <Text style={styles.tileLabel}>{tile.label}</Text>
+              <Text style={styles.tileSub}>{counts[tile.id] ?? 0} {tile.unit}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+          </TouchableOpacity>
+        ))}
       </View>
     </ScrollView>
   );
 }
 
-function StatTile({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <View style={[styles.tile, accent && styles.tileAccent]}>
-      <Text style={[styles.tileValue, accent && styles.tileValueAccent]}>{value}</Text>
-      <Text style={[styles.tileLabel, accent && styles.tileLabelAccent]}>{label}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content:   { padding: 20, paddingBottom: 40 },
   center:    { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
 
-  greeting:     { marginBottom: 24 },
-  greetingName: { fontSize: 24, fontWeight: '800', color: colors.text },
-  greetingCo:   { fontSize: 13, color: colors.muted, marginTop: 2 },
+  header: {
+    backgroundColor: colors.greenDk,
+    paddingBottom: 28,
+    paddingHorizontal: 20,
+  },
+  logo:       { width: 160, height: 40, alignSelf: 'center', marginBottom: 20 },
+  welcome:    { fontSize: 11, fontWeight: '700', color: colors.greenLt, letterSpacing: 2, marginBottom: 4 },
+  nameRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  name:       { fontSize: 28, fontWeight: '800', color: colors.cream },
+  signOutBtn: { padding: 4 },
+  meta:       { fontSize: 12, fontWeight: '600', color: colors.greenLt, letterSpacing: 1 },
 
-  card: {
+  list: {
     backgroundColor: colors.surface,
-    borderRadius: 10,
-    padding: 20,
-    marginBottom: 16,
+    margin: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
+    overflow: 'hidden',
   },
-  cardLabel:     { fontSize: 10, fontWeight: '700', color: colors.muted, letterSpacing: 1.5, marginBottom: 12 },
-  progressRow:   { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginBottom: 12 },
-  pct:           { fontSize: 40, fontWeight: '800', color: colors.greenDk },
-  pctSub:        { fontSize: 14, color: colors.muted },
-  progressBarBg: { height: 6, backgroundColor: colors.border, borderRadius: 3, marginBottom: 10 },
-  progressBarFill: { height: 6, backgroundColor: colors.greenMd, borderRadius: 3 },
-  progressDetail:  { fontSize: 12, color: colors.muted },
 
-  tiles:          { flexDirection: 'row', gap: 10 },
-  tile:           { flex: 1, backgroundColor: colors.surface, borderRadius: 10, padding: 16, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
-  tileAccent:     { backgroundColor: colors.greenDk, borderColor: colors.greenDk },
-  tileValue:      { fontSize: 26, fontWeight: '800', color: colors.text },
-  tileValueAccent:{ color: colors.cream },
-  tileLabel:      { fontSize: 11, color: colors.muted, marginTop: 4, fontWeight: '600' },
-  tileLabelAccent:{ color: colors.greenLt },
+  tile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: colors.surface,
+  },
+  tileBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  tileIcon: { marginRight: 14 },
+  tileBody: { flex: 1 },
+  tileLabel:{ fontSize: 13, fontWeight: '700', color: colors.text, letterSpacing: 0.5 },
+  tileSub:  { fontSize: 12, color: colors.muted, marginTop: 2 },
 });

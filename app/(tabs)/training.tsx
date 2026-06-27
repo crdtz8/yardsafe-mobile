@@ -1,51 +1,49 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, StyleSheet,
+  View, Text, SectionList, TouchableOpacity, StyleSheet,
   ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
-type Training = {
-  id: string;
-  training_id: string;
-  completed_at: string | null;
-  title: string;
-  type: string;
-  duration: string | null;
+type Course = { id: string; title: string; type: string; duration: string | null };
+type Section = { title: string; data: Course[] };
+
+const TYPE_ICON: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
+  video:    'play-circle-outline',
+  document: 'document-text-outline',
 };
 
 export default function TrainingScreen() {
-  const [trainings,  setTrainings]  = useState<Training[]>([]);
+  const [sections,   setSections]   = useState<Section[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter,     setFilter]     = useState<'all' | 'todo' | 'done'>('all');
+  const [filter,     setFilter]     = useState<'all' | 'video' | 'document'>('all');
 
   const load = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
     const { data } = await supabase
-      .from('training_assignments')
-      .select(`
-        id,
-        training_id,
-        completed_at,
-        trainings ( title, type, duration )
-      `)
-      .eq('user_id', user.id)
-      .order('completed_at', { ascending: true, nullsFirst: true });
+      .from('trainings')
+      .select('id, title, type, duration, categories(name)')
+      .order('title');
 
     if (data) {
-      setTrainings(data.map((a: any) => ({
-        id:           a.id,
-        training_id:  a.training_id,
-        completed_at: a.completed_at,
-        title:        a.trainings?.title ?? 'Untitled',
-        type:         a.trainings?.type  ?? 'doc',
-        duration:     a.trainings?.duration ?? null,
-      })));
+      const grouped: Record<string, Course[]> = {};
+      (data as any[]).forEach(t => {
+        const cat = (t.categories as any)?.name ?? 'Uncategorized';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push({ id: t.id, title: t.title, type: t.type ?? 'document', duration: t.duration });
+      });
+
+      const built: Section[] = Object.entries(grouped)
+        .sort(([a], [b]) => {
+          if (a === 'Uncategorized') return 1;
+          if (b === 'Uncategorized') return -1;
+          return a.localeCompare(b);
+        })
+        .map(([title, courses]) => ({ title, data: courses }));
+
+      setSections(built);
     }
     setLoading(false);
     setRefreshing(false);
@@ -55,105 +53,109 @@ export default function TrainingScreen() {
 
   const onRefresh = () => { setRefreshing(true); load(); };
 
-  const visible = trainings.filter(t =>
-    filter === 'all'  ? true :
-    filter === 'todo' ? !t.completed_at :
-                         !!t.completed_at
-  );
+  const filteredSections: Section[] = filter === 'all'
+    ? sections
+    : sections
+        .map(s => ({ ...s, data: s.data.filter(c => c.type === filter) }))
+        .filter(s => s.data.length > 0);
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.greenMd} size="large" />
-      </View>
-    );
+    return <View style={styles.center}><ActivityIndicator color={colors.greenMd} size="large" /></View>;
   }
 
   return (
     <View style={styles.container}>
       {/* Filter pills */}
       <View style={styles.pills}>
-        {(['all', 'todo', 'done'] as const).map(f => (
+        {(['all', 'video', 'document'] as const).map(f => (
           <TouchableOpacity
             key={f}
             style={[styles.pill, filter === f && styles.pillActive]}
             onPress={() => setFilter(f)}
           >
             <Text style={[styles.pillText, filter === f && styles.pillTextActive]}>
-              {f === 'all' ? 'All' : f === 'todo' ? 'To Do' : 'Completed'}
+              {f === 'all' ? 'All' : f === 'video' ? 'Videos' : 'Documents'}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      <FlatList
-        data={visible}
-        keyExtractor={t => t.id}
-        contentContainerStyle={styles.list}
+      <SectionList
+        sections={filteredSections}
+        keyExtractor={item => item.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.greenMd} />}
+        stickySectionHeadersEnabled={false}
+        contentContainerStyle={filteredSections.length === 0 ? styles.emptyContainer : styles.listContent}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyText}>No trainings here</Text>
+            <Ionicons name="folder-open-outline" size={44} color={colors.border} />
+            <Text style={styles.emptyTitle}>No trainings found</Text>
+            <Text style={styles.emptyHint}>Add courses in the web app or tap the Training Library</Text>
           </View>
         }
-        renderItem={({ item }) => <TrainingRow item={item} />}
+        renderSectionHeader={({ section }) => (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{section.title}</Text>
+            <Text style={styles.sectionCount}>{section.data.length}</Text>
+          </View>
+        )}
+        renderItem={({ item, index, section }) => (
+          <View style={[
+            styles.row,
+            index === 0 && styles.rowFirst,
+            index === section.data.length - 1 && styles.rowLast,
+          ]}>
+            <Ionicons name={TYPE_ICON[item.type] ?? 'document-outline'} size={20} color={colors.greenMd} style={styles.rowIcon} />
+            <View style={styles.rowBody}>
+              <Text style={styles.rowTitle}>{item.title}</Text>
+              {item.duration && <Text style={styles.rowDur}>{item.duration}</Text>}
+            </View>
+            <View style={[styles.typeBadge, item.type === 'video' && styles.typeBadgeVideo]}>
+              <Text style={[styles.typeText, item.type === 'video' && styles.typeTextVideo]}>
+                {item.type.toUpperCase()}
+              </Text>
+            </View>
+          </View>
+        )}
+        SectionSeparatorComponent={() => <View style={{ height: 16 }} />}
+        ItemSeparatorComponent={() => <View style={styles.sep} />}
       />
     </View>
   );
 }
 
-function TrainingRow({ item }: { item: Training }) {
-  const done = !!item.completed_at;
-  return (
-    <View style={styles.row}>
-      <View style={[styles.statusDot, done && styles.statusDotDone]}>
-        {done && <Ionicons name="checkmark" size={12} color={colors.cream} />}
-      </View>
-      <View style={styles.rowBody}>
-        <Text style={[styles.rowTitle, done && styles.rowTitleDone]} numberOfLines={2}>
-          {item.title}
-        </Text>
-        <View style={styles.rowMeta}>
-          <Text style={styles.badge}>{item.type.toUpperCase()}</Text>
-          {item.duration && <Text style={styles.duration}>{item.duration}</Text>}
-          {done && <Text style={styles.doneLabel}>COMPLETE</Text>}
-        </View>
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  center:    { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
+  container:      { flex: 1, backgroundColor: colors.bg },
+  center:         { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
 
-  pills:         { flexDirection: 'row', gap: 8, padding: 16, paddingBottom: 8 },
-  pill:          { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  pillActive:    { backgroundColor: colors.greenDk, borderColor: colors.greenDk },
-  pillText:      { fontSize: 12, fontWeight: '600', color: colors.muted },
-  pillTextActive:{ color: colors.cream },
+  pills:          { flexDirection: 'row', gap: 8, padding: 16, paddingBottom: 8 },
+  pill:           { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  pillActive:     { backgroundColor: colors.greenDk, borderColor: colors.greenDk },
+  pillText:       { fontSize: 12, fontWeight: '600', color: colors.muted },
+  pillTextActive: { color: colors.cream },
 
-  list:      { padding: 16, paddingTop: 8, gap: 10 },
-  empty:     { alignItems: 'center', paddingVertical: 48 },
-  emptyText: { color: colors.muted, fontSize: 14 },
+  listContent:    { padding: 16, paddingTop: 8, paddingBottom: 32 },
+  emptyContainer: { flex: 1 },
 
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    backgroundColor: colors.surface,
-    borderRadius: 8,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  statusDot:     { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.border2, alignItems: 'center', justifyContent: 'center', marginTop: 1, flexShrink: 0 },
-  statusDotDone: { backgroundColor: colors.greenMd, borderColor: colors.greenMd },
-  rowBody:       { flex: 1 },
-  rowTitle:      { fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 6 },
-  rowTitleDone:  { color: colors.muted },
-  rowMeta:       { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  badge:         { fontSize: 9, fontWeight: '700', color: colors.muted, letterSpacing: 1, backgroundColor: colors.surface2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 3 },
-  duration:      { fontSize: 11, color: colors.muted },
-  doneLabel:     { fontSize: 9, fontWeight: '700', color: colors.greenMd, letterSpacing: 1 },
+  empty:          { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 10 },
+  emptyTitle:     { fontSize: 14, fontWeight: '600', color: colors.muted },
+  emptyHint:      { fontSize: 12, color: colors.border, textAlign: 'center' },
+
+  sectionHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  sectionTitle:   { fontSize: 11, fontWeight: '800', color: colors.greenMd, letterSpacing: 1, textTransform: 'uppercase' },
+  sectionCount:   { fontSize: 11, fontWeight: '700', color: colors.muted },
+
+  row:            { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, paddingHorizontal: 14, paddingVertical: 13, borderLeftWidth: 1, borderRightWidth: 1, borderColor: colors.border },
+  rowFirst:       { borderTopLeftRadius: 8, borderTopRightRadius: 8, borderTopWidth: 1 },
+  rowLast:        { borderBottomLeftRadius: 8, borderBottomRightRadius: 8, borderBottomWidth: 1 },
+  rowIcon:        { marginRight: 12, flexShrink: 0 },
+  rowBody:        { flex: 1 },
+  rowTitle:       { fontSize: 14, fontWeight: '600', color: colors.text },
+  rowDur:         { fontSize: 11, color: colors.muted, marginTop: 2 },
+  typeBadge:      { borderRadius: 4, paddingHorizontal: 6, paddingVertical: 3, backgroundColor: colors.surface2 },
+  typeBadgeVideo: { backgroundColor: colors.greenMd + '22' },
+  typeText:       { fontSize: 9, fontWeight: '700', color: colors.muted, letterSpacing: 0.5 },
+  typeTextVideo:  { color: colors.greenMd },
+
+  sep:            { height: 1, backgroundColor: colors.border },
 });

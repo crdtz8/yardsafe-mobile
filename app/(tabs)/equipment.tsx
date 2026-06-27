@@ -9,30 +9,23 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
-type Incident = {
-  id: string; title: string | null; incident_type: string | null;
-  incident_date: string | null; severity: string | null; status: string | null;
+type Equipment = {
+  id: string; name: string; equipment_type: string | null;
+  make: string | null; model: string | null; status: string | null; location: string | null;
 };
 
-const SEVERITY_COLOR: Record<string, string> = {
-  minor: '#F59E0B', moderate: '#EF4444', severe: '#7F1D1D', critical: '#7F1D1D',
-};
 const STATUS_COLOR: Record<string, string> = {
-  open: colors.red, investigating: '#F59E0B', resolved: colors.greenMd, closed: colors.muted,
+  active: colors.greenMd, inactive: colors.muted, maintenance: '#F59E0B', retired: colors.red,
 };
 
-const INC_TYPES  = ['Near Miss','First Aid','Property Damage','Recordable Injury','Environmental','Fire / Explosion','Other'];
-const SEV_OPTS   = [{ label:'Minor', value:'minor' },{ label:'Moderate', value:'moderate' },{ label:'Severe', value:'severe' },{ label:'Critical', value:'critical' }];
-const STAT_OPTS  = [{ label:'Open', value:'open' },{ label:'Investigating', value:'investigating' },{ label:'Resolved', value:'resolved' },{ label:'Closed', value:'closed' }];
+const EQUIP_TYPES = ['Forklift','Crane','Shear','Baler','Conveyor','Loader','Excavator','Truck','Trailer','Skid Steer','Magnet','Scale','Other'];
+const STAT_OPTS   = [{ label:'Active', value:'active' },{ label:'Needs Maintenance', value:'maintenance' },{ label:'Out of Service', value:'inactive' },{ label:'Retired', value:'retired' }];
 
-const blankDraft = () => ({
-  title:'', incident_type:'', incident_date: new Date().toISOString().split('T')[0],
-  location:'', severity:'minor', description:'', status:'open',
-});
+const blankDraft = () => ({ name:'', equipment_type:'', make:'', model:'', location:'', status:'active', notes:'' });
 
-export default function IncidentsScreen() {
+export default function EquipmentScreen() {
   const navigation = useNavigation();
-  const [items,      setItems]      = useState<Incident[]>([]);
+  const [items,      setItems]      = useState<Equipment[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -54,10 +47,10 @@ export default function IncidentsScreen() {
 
   const load = useCallback(async () => {
     const { data } = await supabase
-      .from('incidents')
-      .select('id, title, incident_type, incident_date, severity, status')
-      .order('incident_date', { ascending: false });
-    setItems((data as Incident[]) ?? []);
+      .from('equipment')
+      .select('id, name, equipment_type, make, model, status, location')
+      .order('name');
+    setItems((data as Equipment[]) ?? []);
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -65,14 +58,19 @@ export default function IncidentsScreen() {
   useEffect(() => { load(); }, [load]);
 
   const handleSave = async () => {
-    if (!draft.title.trim()) return Alert.alert('Required', 'Enter an incident title.');
+    if (!draft.name.trim()) return Alert.alert('Required', 'Enter equipment name.');
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
     const { data: prof }     = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
-    const { error } = await supabase.from('incidents').insert({
-      ...draft,
-      company_id:  prof?.company_id,
-      reported_by: user!.id,
+    const { error } = await supabase.from('equipment').insert({
+      name:           draft.name.trim(),
+      equipment_type: draft.equipment_type || null,
+      make:           draft.make || null,
+      model:          draft.model || null,
+      location:       draft.location || null,
+      status:         draft.status,
+      notes:          draft.notes || null,
+      company_id:     prof?.company_id,
     });
     setSaving(false);
     if (error) return Alert.alert('Error', error.message);
@@ -94,15 +92,17 @@ export default function IncidentsScreen() {
         contentContainerStyle={items.length === 0 ? s.empty : undefined}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.greenMd} />}
         ItemSeparatorComponent={() => <View style={s.sep} />}
-        ListEmptyComponent={<Empty icon="warning-outline" label="No incidents recorded" hint="Tap + to report one" />}
+        ListEmptyComponent={<Empty icon="construct-outline" label="No equipment on record" hint="Tap + to add equipment" />}
         renderItem={({ item }) => (
           <View style={s.row}>
-            <View style={[s.dot, { backgroundColor: SEVERITY_COLOR[item.severity ?? ''] ?? colors.muted }]} />
+            <View style={s.iconWrap}>
+              <Ionicons name="construct-outline" size={20} color={colors.greenMd} />
+            </View>
             <View style={s.body}>
-              <Text style={s.title}>{item.title ?? item.incident_type ?? 'Incident'}</Text>
+              <Text style={s.title}>{item.name}</Text>
               <Text style={s.sub}>
-                {item.incident_type ? `${item.incident_type} · ` : ''}
-                {item.incident_date ? new Date(item.incident_date).toLocaleDateString() : '—'}
+                {[item.equipment_type, item.make, item.model].filter(Boolean).join(' · ')}
+                {item.location ? ` · ${item.location}` : ''}
               </Text>
             </View>
             {item.status && (
@@ -123,63 +123,45 @@ export default function IncidentsScreen() {
               <TouchableOpacity onPress={() => setShowCreate(false)}>
                 <Text style={f.cancel}>Cancel</Text>
               </TouchableOpacity>
-              <Text style={f.hdrTitle}>Report Incident</Text>
+              <Text style={f.hdrTitle}>Add Equipment</Text>
               <TouchableOpacity onPress={handleSave} disabled={saving}>
                 <Text style={[f.save, saving && f.dim]}>{saving ? 'Saving…' : 'Save'}</Text>
               </TouchableOpacity>
             </View>
             <ScrollView style={f.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={f.sc}>
 
-              <Text style={f.lbl}>TITLE *</Text>
-              <TextInput style={f.inp} value={draft.title} onChangeText={set('title')}
-                placeholder="Brief description of what happened" placeholderTextColor={colors.muted} />
+              <Text style={f.lbl}>EQUIPMENT NAME *</Text>
+              <TextInput style={f.inp} value={draft.name} onChangeText={set('name')}
+                placeholder="e.g. Forklift #2" placeholderTextColor={colors.muted} />
 
-              <Text style={f.lbl}>DATE</Text>
-              <TextInput style={f.inp} value={draft.incident_date} onChangeText={set('incident_date')}
-                placeholder="YYYY-MM-DD" placeholderTextColor={colors.muted} keyboardType="numbers-and-punctuation" />
-
-              <Text style={f.lbl}>INCIDENT TYPE</Text>
+              <Text style={f.lbl}>TYPE</Text>
               <TouchableOpacity style={f.sel} onPress={() => setPickField(p => p === 'type' ? null : 'type')}>
-                <Text style={draft.incident_type ? f.selVal : f.selPh}>{draft.incident_type || 'Select type…'}</Text>
+                <Text style={draft.equipment_type ? f.selVal : f.selPh}>{draft.equipment_type || 'Select type…'}</Text>
                 <Ionicons name={pickField === 'type' ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
               </TouchableOpacity>
               {pickField === 'type' && (
                 <View style={f.opts}>
-                  {INC_TYPES.map((t, i) => (
-                    <TouchableOpacity key={t} style={[f.opt, i === INC_TYPES.length - 1 && f.optLast]}
-                      onPress={() => { set('incident_type')(t); setPickField(null); }}>
+                  {EQUIP_TYPES.map((t, i) => (
+                    <TouchableOpacity key={t} style={[f.opt, i === EQUIP_TYPES.length - 1 && f.optLast]}
+                      onPress={() => { set('equipment_type')(t); setPickField(null); }}>
                       <Text style={f.optTxt}>{t}</Text>
-                      {draft.incident_type === t && <Ionicons name="checkmark" size={16} color={colors.greenMd} />}
+                      {draft.equipment_type === t && <Ionicons name="checkmark" size={16} color={colors.greenMd} />}
                     </TouchableOpacity>
                   ))}
                 </View>
               )}
 
-              <Text style={f.lbl}>SEVERITY</Text>
-              <TouchableOpacity style={f.sel} onPress={() => setPickField(p => p === 'sev' ? null : 'sev')}>
-                <Text style={f.selVal}>{labelFor(SEV_OPTS, draft.severity)}</Text>
-                <Ionicons name={pickField === 'sev' ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
-              </TouchableOpacity>
-              {pickField === 'sev' && (
-                <View style={f.opts}>
-                  {SEV_OPTS.map((o, i) => (
-                    <TouchableOpacity key={o.value} style={[f.opt, i === SEV_OPTS.length - 1 && f.optLast]}
-                      onPress={() => { set('severity')(o.value); setPickField(null); }}>
-                      <Text style={f.optTxt}>{o.label}</Text>
-                      {draft.severity === o.value && <Ionicons name="checkmark" size={16} color={colors.greenMd} />}
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
+              <Text style={f.lbl}>MAKE</Text>
+              <TextInput style={f.inp} value={draft.make} onChangeText={set('make')}
+                placeholder="Manufacturer" placeholderTextColor={colors.muted} />
+
+              <Text style={f.lbl}>MODEL</Text>
+              <TextInput style={f.inp} value={draft.model} onChangeText={set('model')}
+                placeholder="Model number or name" placeholderTextColor={colors.muted} />
 
               <Text style={f.lbl}>LOCATION</Text>
               <TextInput style={f.inp} value={draft.location} onChangeText={set('location')}
-                placeholder="Where did it occur?" placeholderTextColor={colors.muted} />
-
-              <Text style={f.lbl}>WHAT HAPPENED *</Text>
-              <TextInput style={[f.inp, f.ta]} value={draft.description} onChangeText={set('description')}
-                placeholder="Describe the incident…" placeholderTextColor={colors.muted}
-                multiline numberOfLines={4} textAlignVertical="top" />
+                placeholder="Yard location or area" placeholderTextColor={colors.muted} />
 
               <Text style={f.lbl}>STATUS</Text>
               <TouchableOpacity style={f.sel} onPress={() => setPickField(p => p === 'stat' ? null : 'stat')}>
@@ -197,6 +179,11 @@ export default function IncidentsScreen() {
                   ))}
                 </View>
               )}
+
+              <Text style={f.lbl}>NOTES</Text>
+              <TextInput style={[f.inp, f.ta]} value={draft.notes} onChangeText={set('notes')}
+                placeholder="Additional notes…" placeholderTextColor={colors.muted}
+                multiline numberOfLines={3} textAlignVertical="top" />
 
               <View style={{ height: 40 }} />
             </ScrollView>
@@ -224,9 +211,9 @@ const s = StyleSheet.create({
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 8 },
   emptyText: { fontSize: 14, color: colors.muted },
   emptyHint: { fontSize: 12, color: colors.border },
-  sep:       { height: 1, backgroundColor: colors.border, marginLeft: 42 },
+  sep:       { height: 1, backgroundColor: colors.border, marginLeft: 52 },
   row:       { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, paddingHorizontal: 16, paddingVertical: 14 },
-  dot:       { width: 10, height: 10, borderRadius: 5, marginRight: 12, flexShrink: 0 },
+  iconWrap:  { width: 36, alignItems: 'center', marginRight: 10 },
   body:      { flex: 1 },
   title:     { fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 2 },
   sub:       { fontSize: 12, color: colors.muted },
@@ -244,7 +231,7 @@ const f = StyleSheet.create({
   sc:       { padding: 20, paddingBottom: 60 },
   lbl:      { fontSize: 10, fontWeight: '700', color: colors.muted, letterSpacing: 1.5, marginBottom: 6, marginTop: 20 },
   inp:      { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text },
-  ta:       { minHeight: 96, paddingTop: 12 },
+  ta:       { minHeight: 80, paddingTop: 12 },
   sel:      { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' },
   selVal:   { fontSize: 15, color: colors.text, flex: 1 },
   selPh:    { fontSize: 15, color: colors.muted, flex: 1 },

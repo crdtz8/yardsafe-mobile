@@ -4,35 +4,34 @@ import {
   Modal, ScrollView, TextInput, TouchableOpacity, Alert, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from 'expo-router';
+import { useNavigation, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
-type Incident = {
-  id: string; title: string | null; incident_type: string | null;
-  incident_date: string | null; severity: string | null; status: string | null;
+type Inspection = {
+  id: string; title: string | null; date: string | null;
+  location: string | null; status: string | null; score: number | null;
+  profiles: { name: string } | null;
 };
 
-const SEVERITY_COLOR: Record<string, string> = {
-  minor: '#F59E0B', moderate: '#EF4444', severe: '#7F1D1D', critical: '#7F1D1D',
-};
 const STATUS_COLOR: Record<string, string> = {
-  open: colors.red, investigating: '#F59E0B', resolved: colors.greenMd, closed: colors.muted,
+  draft: colors.muted, in_progress: '#F59E0B', completed: colors.greenMd, failed: colors.red,
 };
 
-const INC_TYPES  = ['Near Miss','First Aid','Property Damage','Recordable Injury','Environmental','Fire / Explosion','Other'];
-const SEV_OPTS   = [{ label:'Minor', value:'minor' },{ label:'Moderate', value:'moderate' },{ label:'Severe', value:'severe' },{ label:'Critical', value:'critical' }];
-const STAT_OPTS  = [{ label:'Open', value:'open' },{ label:'Investigating', value:'investigating' },{ label:'Resolved', value:'resolved' },{ label:'Closed', value:'closed' }];
+const STAT_OPTS = [
+  { label:'Draft', value:'draft' },
+  { label:'In Progress', value:'in_progress' },
+  { label:'Completed', value:'completed' },
+];
 
 const blankDraft = () => ({
-  title:'', incident_type:'', incident_date: new Date().toISOString().split('T')[0],
-  location:'', severity:'minor', description:'', status:'open',
+  title: '', date: new Date().toISOString().split('T')[0], location: '', status: 'draft',
 });
 
-export default function IncidentsScreen() {
+export default function InspectionsScreen() {
   const navigation = useNavigation();
-  const [items,      setItems]      = useState<Incident[]>([]);
+  const [items,      setItems]      = useState<Inspection[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -54,10 +53,10 @@ export default function IncidentsScreen() {
 
   const load = useCallback(async () => {
     const { data } = await supabase
-      .from('incidents')
-      .select('id, title, incident_type, incident_date, severity, status')
-      .order('incident_date', { ascending: false });
-    setItems((data as Incident[]) ?? []);
+      .from('inspections')
+      .select('id, title, date, location, status, score, profiles(name)')
+      .order('date', { ascending: false });
+    setItems((data as any[]) ?? []);
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -65,19 +64,23 @@ export default function IncidentsScreen() {
   useEffect(() => { load(); }, [load]);
 
   const handleSave = async () => {
-    if (!draft.title.trim()) return Alert.alert('Required', 'Enter an incident title.');
+    if (!draft.title.trim()) return Alert.alert('Required', 'Enter an inspection title.');
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
     const { data: prof }     = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
-    const { error } = await supabase.from('incidents').insert({
-      ...draft,
-      company_id:  prof?.company_id,
-      reported_by: user!.id,
-    });
+    const { data: newRow, error } = await supabase.from('inspections').insert({
+      title:        draft.title.trim(),
+      date:         draft.date || null,
+      location:     draft.location || null,
+      status:       draft.status,
+      inspector_id: user!.id,
+      company_id:   prof?.company_id,
+    }).select('id').single();
     setSaving(false);
     if (error) return Alert.alert('Error', error.message);
     setShowCreate(false);
     load();
+    if (newRow?.id) router.push(`/(tabs)/inspection/${newRow.id}` as any);
   };
 
   const labelFor = (opts: {label:string;value:string}[], val: string) =>
@@ -94,25 +97,29 @@ export default function IncidentsScreen() {
         contentContainerStyle={items.length === 0 ? s.empty : undefined}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.greenMd} />}
         ItemSeparatorComponent={() => <View style={s.sep} />}
-        ListEmptyComponent={<Empty icon="warning-outline" label="No incidents recorded" hint="Tap + to report one" />}
+        ListEmptyComponent={<Empty icon="clipboard-outline" label="No inspections recorded" hint="Tap + to start one" />}
         renderItem={({ item }) => (
-          <View style={s.row}>
-            <View style={[s.dot, { backgroundColor: SEVERITY_COLOR[item.severity ?? ''] ?? colors.muted }]} />
+          <TouchableOpacity style={s.row} onPress={() => router.push(`/(tabs)/inspection/${item.id}` as any)} activeOpacity={0.7}>
             <View style={s.body}>
-              <Text style={s.title}>{item.title ?? item.incident_type ?? 'Incident'}</Text>
+              <Text style={s.title}>{item.title ?? 'Inspection'}</Text>
               <Text style={s.sub}>
-                {item.incident_type ? `${item.incident_type} · ` : ''}
-                {item.incident_date ? new Date(item.incident_date).toLocaleDateString() : '—'}
+                {item.profiles?.name ? `${item.profiles.name} · ` : ''}
+                {item.date ? new Date(item.date).toLocaleDateString() : '—'}
+                {item.location ? ` · ${item.location}` : ''}
               </Text>
             </View>
-            {item.status && (
-              <View style={[s.badge, { backgroundColor: (STATUS_COLOR[item.status] ?? colors.muted) + '22' }]}>
-                <Text style={[s.badgeText, { color: STATUS_COLOR[item.status] ?? colors.muted }]}>
-                  {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-                </Text>
-              </View>
-            )}
-          </View>
+            <View style={s.right}>
+              {item.score != null && <Text style={s.score}>{item.score}%</Text>}
+              {item.status && (
+                <View style={[s.badge, { backgroundColor: (STATUS_COLOR[item.status] ?? colors.muted) + '22' }]}>
+                  <Text style={[s.badgeText, { color: STATUS_COLOR[item.status] ?? colors.muted }]}>
+                    {item.status.replace('_', ' ')}
+                  </Text>
+                </View>
+              )}
+              <Ionicons name="chevron-forward" size={14} color={colors.muted} />
+            </View>
+          </TouchableOpacity>
         )}
       />
 
@@ -123,63 +130,24 @@ export default function IncidentsScreen() {
               <TouchableOpacity onPress={() => setShowCreate(false)}>
                 <Text style={f.cancel}>Cancel</Text>
               </TouchableOpacity>
-              <Text style={f.hdrTitle}>Report Incident</Text>
+              <Text style={f.hdrTitle}>New Inspection</Text>
               <TouchableOpacity onPress={handleSave} disabled={saving}>
                 <Text style={[f.save, saving && f.dim]}>{saving ? 'Saving…' : 'Save'}</Text>
               </TouchableOpacity>
             </View>
             <ScrollView style={f.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={f.sc}>
 
-              <Text style={f.lbl}>TITLE *</Text>
+              <Text style={f.lbl}>INSPECTION TITLE *</Text>
               <TextInput style={f.inp} value={draft.title} onChangeText={set('title')}
-                placeholder="Brief description of what happened" placeholderTextColor={colors.muted} />
+                placeholder="e.g. Weekly Yard Walkthrough" placeholderTextColor={colors.muted} />
 
               <Text style={f.lbl}>DATE</Text>
-              <TextInput style={f.inp} value={draft.incident_date} onChangeText={set('incident_date')}
+              <TextInput style={f.inp} value={draft.date} onChangeText={set('date')}
                 placeholder="YYYY-MM-DD" placeholderTextColor={colors.muted} keyboardType="numbers-and-punctuation" />
 
-              <Text style={f.lbl}>INCIDENT TYPE</Text>
-              <TouchableOpacity style={f.sel} onPress={() => setPickField(p => p === 'type' ? null : 'type')}>
-                <Text style={draft.incident_type ? f.selVal : f.selPh}>{draft.incident_type || 'Select type…'}</Text>
-                <Ionicons name={pickField === 'type' ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
-              </TouchableOpacity>
-              {pickField === 'type' && (
-                <View style={f.opts}>
-                  {INC_TYPES.map((t, i) => (
-                    <TouchableOpacity key={t} style={[f.opt, i === INC_TYPES.length - 1 && f.optLast]}
-                      onPress={() => { set('incident_type')(t); setPickField(null); }}>
-                      <Text style={f.optTxt}>{t}</Text>
-                      {draft.incident_type === t && <Ionicons name="checkmark" size={16} color={colors.greenMd} />}
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-
-              <Text style={f.lbl}>SEVERITY</Text>
-              <TouchableOpacity style={f.sel} onPress={() => setPickField(p => p === 'sev' ? null : 'sev')}>
-                <Text style={f.selVal}>{labelFor(SEV_OPTS, draft.severity)}</Text>
-                <Ionicons name={pickField === 'sev' ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
-              </TouchableOpacity>
-              {pickField === 'sev' && (
-                <View style={f.opts}>
-                  {SEV_OPTS.map((o, i) => (
-                    <TouchableOpacity key={o.value} style={[f.opt, i === SEV_OPTS.length - 1 && f.optLast]}
-                      onPress={() => { set('severity')(o.value); setPickField(null); }}>
-                      <Text style={f.optTxt}>{o.label}</Text>
-                      {draft.severity === o.value && <Ionicons name="checkmark" size={16} color={colors.greenMd} />}
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-
-              <Text style={f.lbl}>LOCATION</Text>
+              <Text style={f.lbl}>LOCATION / AREA</Text>
               <TextInput style={f.inp} value={draft.location} onChangeText={set('location')}
-                placeholder="Where did it occur?" placeholderTextColor={colors.muted} />
-
-              <Text style={f.lbl}>WHAT HAPPENED *</Text>
-              <TextInput style={[f.inp, f.ta]} value={draft.description} onChangeText={set('description')}
-                placeholder="Describe the incident…" placeholderTextColor={colors.muted}
-                multiline numberOfLines={4} textAlignVertical="top" />
+                placeholder="e.g. Main Yard, Processing Area" placeholderTextColor={colors.muted} />
 
               <Text style={f.lbl}>STATUS</Text>
               <TouchableOpacity style={f.sel} onPress={() => setPickField(p => p === 'stat' ? null : 'stat')}>
@@ -197,6 +165,11 @@ export default function IncidentsScreen() {
                   ))}
                 </View>
               )}
+
+              <View style={f.note}>
+                <Ionicons name="information-circle-outline" size={16} color={colors.muted} style={{ marginRight: 6 }} />
+                <Text style={f.noteTxt}>Full checklist and scoring is available in the web app.</Text>
+              </View>
 
               <View style={{ height: 40 }} />
             </ScrollView>
@@ -224,13 +197,14 @@ const s = StyleSheet.create({
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 8 },
   emptyText: { fontSize: 14, color: colors.muted },
   emptyHint: { fontSize: 12, color: colors.border },
-  sep:       { height: 1, backgroundColor: colors.border, marginLeft: 42 },
+  sep:       { height: 1, backgroundColor: colors.border },
   row:       { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, paddingHorizontal: 16, paddingVertical: 14 },
-  dot:       { width: 10, height: 10, borderRadius: 5, marginRight: 12, flexShrink: 0 },
   body:      { flex: 1 },
   title:     { fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 2 },
   sub:       { fontSize: 12, color: colors.muted },
-  badge:     { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 8 },
+  right:     { alignItems: 'flex-end', gap: 4, marginLeft: 10 },
+  score:     { fontSize: 16, fontWeight: '800', color: colors.greenMd },
+  badge:     { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
   badgeText: { fontSize: 11, fontWeight: '700' },
 });
 
@@ -244,12 +218,12 @@ const f = StyleSheet.create({
   sc:       { padding: 20, paddingBottom: 60 },
   lbl:      { fontSize: 10, fontWeight: '700', color: colors.muted, letterSpacing: 1.5, marginBottom: 6, marginTop: 20 },
   inp:      { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text },
-  ta:       { minHeight: 96, paddingTop: 12 },
   sel:      { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' },
   selVal:   { fontSize: 15, color: colors.text, flex: 1 },
-  selPh:    { fontSize: 15, color: colors.muted, flex: 1 },
   opts:     { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, marginTop: 2, overflow: 'hidden' },
   opt:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.border },
   optLast:  { borderBottomWidth: 0 },
   optTxt:   { fontSize: 15, color: colors.text, flex: 1 },
+  note:     { flexDirection: 'row', alignItems: 'center', marginTop: 28, padding: 12, backgroundColor: colors.surface, borderRadius: 8, borderWidth: 1, borderColor: colors.border },
+  noteTxt:  { fontSize: 13, color: colors.muted, flex: 1 },
 });
