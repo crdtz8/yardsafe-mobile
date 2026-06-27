@@ -33,9 +33,18 @@ export default function CorrectiveScreen() {
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [editItem,   setEditItem]   = useState<Action | null>(null);
   const [saving,     setSaving]     = useState(false);
   const [draft,      setDraft]      = useState(blankDraft);
   const [pickField,  setPickField]  = useState<string | null>(null);
+
+  const showModal = showCreate || editItem !== null;
+
+  const closeModal = () => {
+    setShowCreate(false);
+    setEditItem(null);
+    setPickField(null);
+  };
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -48,6 +57,19 @@ export default function CorrectiveScreen() {
   }, [navigation]);
 
   const set = (key: string) => (val: string) => setDraft(d => ({ ...d, [key]: val }));
+
+  const openEdit = (item: Action) => {
+    setDraft({
+      title:       item.title ?? '',
+      description: '',
+      assigned_to: '',
+      due_date:    item.due_date ?? '',
+      priority:    item.priority ?? 'medium',
+      status:      item.status ?? 'open',
+    });
+    setPickField(null);
+    setEditItem(item);
+  };
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -62,30 +84,65 @@ export default function CorrectiveScreen() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (!showCreate) return;
+    if (!showModal) return;
     supabase.from('profiles').select('id, name').is('archived_at', null).order('name')
       .then(({ data }) => setEmployees((data as any[]) ?? []));
-  }, [showCreate]);
+  }, [showModal]);
 
   const handleSave = async () => {
     if (!draft.title.trim()) return Alert.alert('Required', 'Enter a title.');
     setSaving(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: prof }     = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
-    const { error } = await supabase.from('corrective_actions').insert({
-      title:       draft.title.trim(),
-      description: draft.description || null,
-      assigned_to: draft.assigned_to || null,
-      due_date:    draft.due_date || null,
-      priority:    draft.priority,
-      status:      draft.status,
-      assigned_by: user!.id,
-      company_id:  prof?.company_id,
-    });
-    setSaving(false);
-    if (error) return Alert.alert('Error', error.message);
-    setShowCreate(false);
-    load();
+    if (editItem) {
+      const { error } = await supabase.from('corrective_actions').update({
+        title:       draft.title.trim(),
+        description: draft.description || null,
+        assigned_to: draft.assigned_to || null,
+        due_date:    draft.due_date || null,
+        priority:    draft.priority,
+        status:      draft.status,
+      }).eq('id', editItem.id);
+      setSaving(false);
+      if (error) return Alert.alert('Error', error.message);
+      setEditItem(null);
+      load();
+    } else {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: prof }     = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
+      const { error } = await supabase.from('corrective_actions').insert({
+        title:       draft.title.trim(),
+        description: draft.description || null,
+        assigned_to: draft.assigned_to || null,
+        due_date:    draft.due_date || null,
+        priority:    draft.priority,
+        status:      draft.status,
+        assigned_by: user!.id,
+        company_id:  prof?.company_id,
+      });
+      setSaving(false);
+      if (error) return Alert.alert('Error', error.message);
+      setShowCreate(false);
+      load();
+    }
+  };
+
+  const handleDelete = () => {
+    if (!editItem) return;
+    Alert.alert(
+      'Delete Action',
+      `Delete "${editItem.title}"? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive',
+          onPress: async () => {
+            const { error } = await supabase.from('corrective_actions').delete().eq('id', editItem.id);
+            if (error) return Alert.alert('Error', error.message);
+            setEditItem(null);
+            load();
+          },
+        },
+      ],
+    );
   };
 
   const labelFor = (opts: {label:string;value:string}[], val: string) =>
@@ -105,7 +162,7 @@ export default function CorrectiveScreen() {
         ItemSeparatorComponent={() => <View style={s.sep} />}
         ListEmptyComponent={<Empty icon="checkmark-circle-outline" label="No corrective actions" hint="Tap + to add one" />}
         renderItem={({ item }) => (
-          <View style={s.row}>
+          <TouchableOpacity style={s.row} onPress={() => openEdit(item)} activeOpacity={0.7}>
             <View style={[s.bar, { backgroundColor: PRIORITY_COLOR[item.priority ?? ''] ?? colors.border }]} />
             <View style={s.body}>
               <Text style={s.title}>{item.title}</Text>
@@ -121,18 +178,18 @@ export default function CorrectiveScreen() {
                 </Text>
               </View>
             )}
-          </View>
+          </TouchableOpacity>
         )}
       />
 
-      <Modal visible={showCreate} animationType="slide" presentationStyle="pageSheet">
+      <Modal visible={showModal} animationType="slide" presentationStyle="pageSheet">
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.greenDk }}>
           <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={f.hdr}>
-              <TouchableOpacity onPress={() => setShowCreate(false)}>
+              <TouchableOpacity onPress={closeModal}>
                 <Text style={f.cancel}>Cancel</Text>
               </TouchableOpacity>
-              <Text style={f.hdrTitle}>New Action</Text>
+              <Text style={f.hdrTitle}>{editItem ? 'Edit Action' : 'New Action'}</Text>
               <TouchableOpacity onPress={handleSave} disabled={saving}>
                 <Text style={[f.save, saving && f.dim]}>{saving ? 'Saving…' : 'Save'}</Text>
               </TouchableOpacity>
@@ -206,6 +263,13 @@ export default function CorrectiveScreen() {
                 </View>
               )}
 
+              {editItem && (
+                <TouchableOpacity style={f.deleteBtn} onPress={handleDelete}>
+                  <Ionicons name="trash-outline" size={16} color={colors.red} />
+                  <Text style={f.deleteTxt}>Delete Action</Text>
+                </TouchableOpacity>
+              )}
+
               <View style={{ height: 40 }} />
             </ScrollView>
           </KeyboardAvoidingView>
@@ -243,21 +307,23 @@ const s = StyleSheet.create({
 });
 
 const f = StyleSheet.create({
-  hdr:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.greenDk, paddingHorizontal: 16, paddingVertical: 14 },
-  hdrTitle: { fontSize: 15, fontWeight: '700', color: colors.cream },
-  cancel:   { fontSize: 15, color: colors.greenLt, minWidth: 64 },
-  save:     { fontSize: 15, fontWeight: '700', color: colors.cream, textAlign: 'right', minWidth: 64 },
-  dim:      { opacity: 0.4 },
-  scroll:   { flex: 1 },
-  sc:       { padding: 20, paddingBottom: 60 },
-  lbl:      { fontSize: 10, fontWeight: '700', color: colors.muted, letterSpacing: 1.5, marginBottom: 6, marginTop: 20 },
-  inp:      { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text },
-  ta:       { minHeight: 80, paddingTop: 12 },
-  sel:      { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' },
-  selVal:   { fontSize: 15, color: colors.text, flex: 1 },
-  selPh:    { fontSize: 15, color: colors.muted, flex: 1 },
-  opts:     { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, marginTop: 2, overflow: 'hidden' },
-  opt:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.border },
-  optLast:  { borderBottomWidth: 0 },
-  optTxt:   { fontSize: 15, color: colors.text, flex: 1 },
+  hdr:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.greenDk, paddingHorizontal: 16, paddingVertical: 14 },
+  hdrTitle:  { fontSize: 15, fontWeight: '700', color: colors.cream },
+  cancel:    { fontSize: 15, color: colors.greenLt, minWidth: 64 },
+  save:      { fontSize: 15, fontWeight: '700', color: colors.cream, textAlign: 'right', minWidth: 64 },
+  dim:       { opacity: 0.4 },
+  scroll:    { flex: 1 },
+  sc:        { padding: 20, paddingBottom: 60 },
+  lbl:       { fontSize: 10, fontWeight: '700', color: colors.muted, letterSpacing: 1.5, marginBottom: 6, marginTop: 20 },
+  inp:       { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text },
+  ta:        { minHeight: 80, paddingTop: 12 },
+  sel:       { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' },
+  selVal:    { fontSize: 15, color: colors.text, flex: 1 },
+  selPh:     { fontSize: 15, color: colors.muted, flex: 1 },
+  opts:      { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, marginTop: 2, overflow: 'hidden' },
+  opt:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.border },
+  optLast:   { borderBottomWidth: 0 },
+  optTxt:    { fontSize: 15, color: colors.text, flex: 1 },
+  deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 32, paddingVertical: 14, borderRadius: 8, borderWidth: 1, borderColor: colors.red + '55', backgroundColor: colors.red + '11' },
+  deleteTxt: { fontSize: 15, fontWeight: '600', color: colors.red },
 });

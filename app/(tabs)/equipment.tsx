@@ -29,9 +29,32 @@ export default function EquipmentScreen() {
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [editItem,   setEditItem]   = useState<Equipment | null>(null);
   const [saving,     setSaving]     = useState(false);
   const [draft,      setDraft]      = useState(blankDraft);
   const [pickField,  setPickField]  = useState<string | null>(null);
+
+  const showModal = showCreate || editItem !== null;
+
+  const closeModal = () => {
+    setShowCreate(false);
+    setEditItem(null);
+    setPickField(null);
+  };
+
+  const openEdit = (item: Equipment) => {
+    setDraft({
+      name:           item.name ?? '',
+      equipment_type: item.equipment_type ?? '',
+      make:           item.make ?? '',
+      model:          item.model ?? '',
+      location:       item.location ?? '',
+      status:         item.status ?? 'active',
+      notes:          '',
+    });
+    setPickField(null);
+    setEditItem(item);
+  };
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -60,22 +83,59 @@ export default function EquipmentScreen() {
   const handleSave = async () => {
     if (!draft.name.trim()) return Alert.alert('Required', 'Enter equipment name.');
     setSaving(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: prof }     = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
-    const { error } = await supabase.from('equipment').insert({
-      name:           draft.name.trim(),
-      equipment_type: draft.equipment_type || null,
-      make:           draft.make || null,
-      model:          draft.model || null,
-      location:       draft.location || null,
-      status:         draft.status,
-      notes:          draft.notes || null,
-      company_id:     prof?.company_id,
-    });
-    setSaving(false);
-    if (error) return Alert.alert('Error', error.message);
-    setShowCreate(false);
-    load();
+
+    if (editItem) {
+      const { error } = await supabase.from('equipment').update({
+        name:           draft.name.trim(),
+        equipment_type: draft.equipment_type || null,
+        make:           draft.make || null,
+        model:          draft.model || null,
+        location:       draft.location || null,
+        status:         draft.status,
+        notes:          draft.notes || null,
+      }).eq('id', editItem.id);
+      setSaving(false);
+      if (error) return Alert.alert('Error', error.message);
+      setEditItem(null);
+      load();
+    } else {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: prof }     = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
+      const { error } = await supabase.from('equipment').insert({
+        name:           draft.name.trim(),
+        equipment_type: draft.equipment_type || null,
+        make:           draft.make || null,
+        model:          draft.model || null,
+        location:       draft.location || null,
+        status:         draft.status,
+        notes:          draft.notes || null,
+        company_id:     prof?.company_id,
+      });
+      setSaving(false);
+      if (error) return Alert.alert('Error', error.message);
+      setShowCreate(false);
+      load();
+    }
+  };
+
+  const handleDelete = () => {
+    if (!editItem) return;
+    Alert.alert(
+      'Delete Equipment',
+      `Delete "${editItem.name}"? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive',
+          onPress: async () => {
+            const { error } = await supabase.from('equipment').delete().eq('id', editItem.id);
+            if (error) return Alert.alert('Error', error.message);
+            setEditItem(null);
+            load();
+          },
+        },
+      ],
+    );
   };
 
   const labelFor = (opts: {label:string;value:string}[], val: string) =>
@@ -94,7 +154,7 @@ export default function EquipmentScreen() {
         ItemSeparatorComponent={() => <View style={s.sep} />}
         ListEmptyComponent={<Empty icon="construct-outline" label="No equipment on record" hint="Tap + to add equipment" />}
         renderItem={({ item }) => (
-          <View style={s.row}>
+          <TouchableOpacity style={s.row} onPress={() => openEdit(item)} activeOpacity={0.7}>
             <View style={s.iconWrap}>
               <Ionicons name="construct-outline" size={20} color={colors.greenMd} />
             </View>
@@ -112,18 +172,18 @@ export default function EquipmentScreen() {
                 </Text>
               </View>
             )}
-          </View>
+          </TouchableOpacity>
         )}
       />
 
-      <Modal visible={showCreate} animationType="slide" presentationStyle="pageSheet">
+      <Modal visible={showModal} animationType="slide" presentationStyle="pageSheet">
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.greenDk }}>
           <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={f.hdr}>
-              <TouchableOpacity onPress={() => setShowCreate(false)}>
+              <TouchableOpacity onPress={closeModal}>
                 <Text style={f.cancel}>Cancel</Text>
               </TouchableOpacity>
-              <Text style={f.hdrTitle}>Add Equipment</Text>
+              <Text style={f.hdrTitle}>{editItem ? 'Edit Equipment' : 'Add Equipment'}</Text>
               <TouchableOpacity onPress={handleSave} disabled={saving}>
                 <Text style={[f.save, saving && f.dim]}>{saving ? 'Saving…' : 'Save'}</Text>
               </TouchableOpacity>
@@ -185,6 +245,13 @@ export default function EquipmentScreen() {
                 placeholder="Additional notes…" placeholderTextColor={colors.muted}
                 multiline numberOfLines={3} textAlignVertical="top" />
 
+              {editItem && (
+                <TouchableOpacity style={f.deleteBtn} onPress={handleDelete}>
+                  <Ionicons name="trash-outline" size={16} color={colors.red} />
+                  <Text style={f.deleteTxt}>Delete Equipment</Text>
+                </TouchableOpacity>
+              )}
+
               <View style={{ height: 40 }} />
             </ScrollView>
           </KeyboardAvoidingView>
@@ -222,21 +289,23 @@ const s = StyleSheet.create({
 });
 
 const f = StyleSheet.create({
-  hdr:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.greenDk, paddingHorizontal: 16, paddingVertical: 14 },
-  hdrTitle: { fontSize: 15, fontWeight: '700', color: colors.cream },
-  cancel:   { fontSize: 15, color: colors.greenLt, minWidth: 64 },
-  save:     { fontSize: 15, fontWeight: '700', color: colors.cream, textAlign: 'right', minWidth: 64 },
-  dim:      { opacity: 0.4 },
-  scroll:   { flex: 1 },
-  sc:       { padding: 20, paddingBottom: 60 },
-  lbl:      { fontSize: 10, fontWeight: '700', color: colors.muted, letterSpacing: 1.5, marginBottom: 6, marginTop: 20 },
-  inp:      { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text },
-  ta:       { minHeight: 80, paddingTop: 12 },
-  sel:      { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' },
-  selVal:   { fontSize: 15, color: colors.text, flex: 1 },
-  selPh:    { fontSize: 15, color: colors.muted, flex: 1 },
-  opts:     { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, marginTop: 2, overflow: 'hidden' },
-  opt:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.border },
-  optLast:  { borderBottomWidth: 0 },
-  optTxt:   { fontSize: 15, color: colors.text, flex: 1 },
+  hdr:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.greenDk, paddingHorizontal: 16, paddingVertical: 14 },
+  hdrTitle:  { fontSize: 15, fontWeight: '700', color: colors.cream },
+  cancel:    { fontSize: 15, color: colors.greenLt, minWidth: 64 },
+  save:      { fontSize: 15, fontWeight: '700', color: colors.cream, textAlign: 'right', minWidth: 64 },
+  dim:       { opacity: 0.4 },
+  scroll:    { flex: 1 },
+  sc:        { padding: 20, paddingBottom: 60 },
+  lbl:       { fontSize: 10, fontWeight: '700', color: colors.muted, letterSpacing: 1.5, marginBottom: 6, marginTop: 20 },
+  inp:       { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text },
+  ta:        { minHeight: 80, paddingTop: 12 },
+  sel:       { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' },
+  selVal:    { fontSize: 15, color: colors.text, flex: 1 },
+  selPh:     { fontSize: 15, color: colors.muted, flex: 1 },
+  opts:      { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, marginTop: 2, overflow: 'hidden' },
+  opt:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.border },
+  optLast:   { borderBottomWidth: 0 },
+  optTxt:    { fontSize: 15, color: colors.text, flex: 1 },
+  deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 32, paddingVertical: 14, borderRadius: 8, borderWidth: 1, borderColor: colors.red + '44', backgroundColor: colors.red + '11' },
+  deleteTxt: { fontSize: 15, fontWeight: '600', color: colors.red },
 });

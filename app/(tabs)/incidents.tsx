@@ -28,6 +28,7 @@ const STAT_OPTS  = [{ label:'Open', value:'open' },{ label:'Investigating', valu
 const blankDraft = () => ({
   title:'', incident_type:'', incident_date: new Date().toISOString().split('T')[0],
   location:'', severity:'minor', description:'', status:'open',
+  injured_party:'', action_taken:'',
 });
 
 export default function IncidentsScreen() {
@@ -36,9 +37,18 @@ export default function IncidentsScreen() {
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [editItem,   setEditItem]   = useState<Incident | null>(null);
   const [saving,     setSaving]     = useState(false);
   const [draft,      setDraft]      = useState(blankDraft);
   const [pickField,  setPickField]  = useState<string | null>(null);
+
+  const showModal = showCreate || editItem !== null;
+
+  const closeModal = () => {
+    setShowCreate(false);
+    setEditItem(null);
+    setPickField(null);
+  };
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -51,6 +61,22 @@ export default function IncidentsScreen() {
   }, [navigation]);
 
   const set = (key: string) => (val: string) => setDraft(d => ({ ...d, [key]: val }));
+
+  const openEdit = (item: Incident) => {
+    setDraft({
+      title:          item.title          ?? '',
+      incident_type:  item.incident_type  ?? '',
+      incident_date:  item.incident_date  ?? new Date().toISOString().split('T')[0],
+      location:       (item as any).location       ?? '',
+      severity:       item.severity       ?? 'minor',
+      description:    (item as any).description    ?? '',
+      status:         item.status         ?? 'open',
+      injured_party:  (item as any).injured_party  ?? '',
+      action_taken:   (item as any).action_taken   ?? '',
+    });
+    setEditItem(item);
+    setPickField(null);
+  };
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -67,17 +93,55 @@ export default function IncidentsScreen() {
   const handleSave = async () => {
     if (!draft.title.trim()) return Alert.alert('Required', 'Enter an incident title.');
     setSaving(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: prof }     = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
-    const { error } = await supabase.from('incidents').insert({
-      ...draft,
-      company_id:  prof?.company_id,
-      reported_by: user!.id,
-    });
-    setSaving(false);
-    if (error) return Alert.alert('Error', error.message);
-    setShowCreate(false);
-    load();
+
+    if (editItem) {
+      const { error } = await supabase.from('incidents').update({
+        title:         draft.title,
+        incident_type: draft.incident_type,
+        severity:      draft.severity,
+        location:      draft.location,
+        description:   draft.description,
+        injured_party: draft.injured_party,
+        action_taken:  draft.action_taken,
+        status:        draft.status,
+      }).eq('id', editItem.id);
+      setSaving(false);
+      if (error) return Alert.alert('Error', error.message);
+      setEditItem(null);
+      load();
+    } else {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: prof }     = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
+      const { error } = await supabase.from('incidents').insert({
+        ...draft,
+        company_id:  prof?.company_id,
+        reported_by: user!.id,
+      });
+      setSaving(false);
+      if (error) return Alert.alert('Error', error.message);
+      setShowCreate(false);
+      load();
+    }
+  };
+
+  const handleDelete = () => {
+    if (!editItem) return;
+    Alert.alert(
+      'Delete Incident',
+      'Are you sure you want to delete this incident? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive',
+          onPress: async () => {
+            const { error } = await supabase.from('incidents').delete().eq('id', editItem.id);
+            if (error) return Alert.alert('Error', error.message);
+            setEditItem(null);
+            load();
+          },
+        },
+      ],
+    );
   };
 
   const labelFor = (opts: {label:string;value:string}[], val: string) =>
@@ -96,7 +160,7 @@ export default function IncidentsScreen() {
         ItemSeparatorComponent={() => <View style={s.sep} />}
         ListEmptyComponent={<Empty icon="warning-outline" label="No incidents recorded" hint="Tap + to report one" />}
         renderItem={({ item }) => (
-          <View style={s.row}>
+          <TouchableOpacity style={s.row} onPress={() => openEdit(item)} activeOpacity={0.7}>
             <View style={[s.dot, { backgroundColor: SEVERITY_COLOR[item.severity ?? ''] ?? colors.muted }]} />
             <View style={s.body}>
               <Text style={s.title}>{item.title ?? item.incident_type ?? 'Incident'}</Text>
@@ -112,18 +176,18 @@ export default function IncidentsScreen() {
                 </Text>
               </View>
             )}
-          </View>
+          </TouchableOpacity>
         )}
       />
 
-      <Modal visible={showCreate} animationType="slide" presentationStyle="pageSheet">
+      <Modal visible={showModal} animationType="slide" presentationStyle="pageSheet">
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.greenDk }}>
           <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={f.hdr}>
-              <TouchableOpacity onPress={() => setShowCreate(false)}>
+              <TouchableOpacity onPress={closeModal}>
                 <Text style={f.cancel}>Cancel</Text>
               </TouchableOpacity>
-              <Text style={f.hdrTitle}>Report Incident</Text>
+              <Text style={f.hdrTitle}>{editItem ? 'Edit Incident' : 'Report Incident'}</Text>
               <TouchableOpacity onPress={handleSave} disabled={saving}>
                 <Text style={[f.save, saving && f.dim]}>{saving ? 'Saving…' : 'Save'}</Text>
               </TouchableOpacity>
@@ -181,6 +245,15 @@ export default function IncidentsScreen() {
                 placeholder="Describe the incident…" placeholderTextColor={colors.muted}
                 multiline numberOfLines={4} textAlignVertical="top" />
 
+              <Text style={f.lbl}>INJURED PARTY</Text>
+              <TextInput style={f.inp} value={draft.injured_party} onChangeText={set('injured_party')}
+                placeholder="Name of injured person (if any)" placeholderTextColor={colors.muted} />
+
+              <Text style={f.lbl}>ACTION TAKEN</Text>
+              <TextInput style={[f.inp, f.ta]} value={draft.action_taken} onChangeText={set('action_taken')}
+                placeholder="What was done in response?" placeholderTextColor={colors.muted}
+                multiline numberOfLines={3} textAlignVertical="top" />
+
               <Text style={f.lbl}>STATUS</Text>
               <TouchableOpacity style={f.sel} onPress={() => setPickField(p => p === 'stat' ? null : 'stat')}>
                 <Text style={f.selVal}>{labelFor(STAT_OPTS, draft.status)}</Text>
@@ -196,6 +269,13 @@ export default function IncidentsScreen() {
                     </TouchableOpacity>
                   ))}
                 </View>
+              )}
+
+              {editItem && (
+                <TouchableOpacity style={f.deleteBtn} onPress={handleDelete}>
+                  <Ionicons name="trash-outline" size={16} color={colors.red} style={{ marginRight: 6 }} />
+                  <Text style={f.deleteTxt}>Delete Incident</Text>
+                </TouchableOpacity>
               )}
 
               <View style={{ height: 40 }} />
@@ -235,21 +315,23 @@ const s = StyleSheet.create({
 });
 
 const f = StyleSheet.create({
-  hdr:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.greenDk, paddingHorizontal: 16, paddingVertical: 14 },
-  hdrTitle: { fontSize: 15, fontWeight: '700', color: colors.cream },
-  cancel:   { fontSize: 15, color: colors.greenLt, minWidth: 64 },
-  save:     { fontSize: 15, fontWeight: '700', color: colors.cream, textAlign: 'right', minWidth: 64 },
-  dim:      { opacity: 0.4 },
-  scroll:   { flex: 1 },
-  sc:       { padding: 20, paddingBottom: 60 },
-  lbl:      { fontSize: 10, fontWeight: '700', color: colors.muted, letterSpacing: 1.5, marginBottom: 6, marginTop: 20 },
-  inp:      { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text },
-  ta:       { minHeight: 96, paddingTop: 12 },
-  sel:      { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' },
-  selVal:   { fontSize: 15, color: colors.text, flex: 1 },
-  selPh:    { fontSize: 15, color: colors.muted, flex: 1 },
-  opts:     { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, marginTop: 2, overflow: 'hidden' },
-  opt:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.border },
-  optLast:  { borderBottomWidth: 0 },
-  optTxt:   { fontSize: 15, color: colors.text, flex: 1 },
+  hdr:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.greenDk, paddingHorizontal: 16, paddingVertical: 14 },
+  hdrTitle:  { fontSize: 15, fontWeight: '700', color: colors.cream },
+  cancel:    { fontSize: 15, color: colors.greenLt, minWidth: 64 },
+  save:      { fontSize: 15, fontWeight: '700', color: colors.cream, textAlign: 'right', minWidth: 64 },
+  dim:       { opacity: 0.4 },
+  scroll:    { flex: 1 },
+  sc:        { padding: 20, paddingBottom: 60 },
+  lbl:       { fontSize: 10, fontWeight: '700', color: colors.muted, letterSpacing: 1.5, marginBottom: 6, marginTop: 20 },
+  inp:       { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text },
+  ta:        { minHeight: 96, paddingTop: 12 },
+  sel:       { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' },
+  selVal:    { fontSize: 15, color: colors.text, flex: 1 },
+  selPh:     { fontSize: 15, color: colors.muted, flex: 1 },
+  opts:      { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, marginTop: 2, overflow: 'hidden' },
+  opt:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.border },
+  optLast:   { borderBottomWidth: 0 },
+  optTxt:    { fontSize: 15, color: colors.text, flex: 1 },
+  deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 32, paddingVertical: 14, borderRadius: 8, borderWidth: 1, borderColor: colors.red + '55', backgroundColor: colors.red + '11' },
+  deleteTxt: { fontSize: 15, fontWeight: '600', color: colors.red },
 });

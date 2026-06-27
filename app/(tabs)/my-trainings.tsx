@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl,
+  Alert, TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
@@ -32,6 +33,28 @@ export default function MyTrainingsScreen() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const markComplete = useCallback((item: Assignment) => {
+    const t = item.trainings as any;
+    Alert.alert(
+      'Mark Complete',
+      `Mark "${t?.title ?? 'this training'}" as completed?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Mark Complete',
+          style: 'default',
+          onPress: async () => {
+            await supabase
+              .from('training_assignments')
+              .update({ completed_at: new Date().toISOString() })
+              .eq('id', item.id);
+            load();
+          },
+        },
+      ],
+    );
+  }, [load]);
 
   if (loading) return <View style={s.center}><ActivityIndicator color={colors.greenMd} size="large" /></View>;
 
@@ -71,6 +94,9 @@ export default function MyTrainingsScreen() {
               )}
             </View>
             {t?.duration && <Text style={s.dur}>{t.duration}</Text>}
+            <TouchableOpacity style={s.checkBtn} onPress={() => markComplete(item)} activeOpacity={0.7}>
+              <Ionicons name="checkmark" size={16} color="#fff" />
+            </TouchableOpacity>
           </View>
         );
       }}
@@ -93,4 +119,5 @@ const s = StyleSheet.create({
   due:       { fontSize: 12, color: colors.muted },
   overdue:   { color: colors.red, fontWeight: '600' },
   dur:       { fontSize: 11, color: colors.muted },
+  checkBtn:  { width: 30, height: 30, borderRadius: 15, backgroundColor: colors.greenMd, alignItems: 'center', justifyContent: 'center', marginLeft: 10 },
 });
