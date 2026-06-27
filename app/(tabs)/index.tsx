@@ -42,7 +42,7 @@ const TILES: TileDef[] = [
   },
   // ── Admin / manager tiles ────────────────────────────────────────────────
   {
-    id: 'trainings', label: 'ALL TRAININGS', icon: 'shield-outline', unit: 'trainings', route: '/(tabs)/training',
+    id: 'trainings', label: 'MY TRAININGS', icon: 'shield-outline', unit: 'trainings', route: '/(tabs)/training',
     roles: ['admin', 'safety_manager', 'manager'],
     count: async (cid) => {
       const { count } = await supabase.from('trainings').select('id', { count: 'exact', head: true }).eq('company_id', cid);
@@ -241,10 +241,12 @@ export default function DashboardScreen() {
             <Ionicons name="log-out-outline" size={22} color={colors.greenLt} />
           </TouchableOpacity>
         </View>
-        <Text style={styles.meta}>
-          {empCount} {empCount === 1 ? 'EMPLOYEE' : 'EMPLOYEES'}
-          {overdue > 0 ? ` · ${overdue} OVERDUE` : ''}
-        </Text>
+        {(role === 'admin' || role === 'safety_manager' || role === 'manager') && (
+          <Text style={styles.meta}>
+            {empCount} {empCount === 1 ? 'EMPLOYEE' : 'EMPLOYEES'}
+            {overdue > 0 ? ` · ${overdue} OVERDUE` : ''}
+          </Text>
+        )}
       </View>
 
       {/* Tile list */}

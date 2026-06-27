@@ -8,8 +8,7 @@ import { colors } from '@/constants/theme';
 import { signIn } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
-type Tab       = 'email' | 'phone' | 'username';
-type PhoneStep = 'number' | 'otp';
+type Tab = 'email' | 'phone' | 'username';
 
 export default function LoginScreen() {
   const [tab, setTab] = useState<Tab>('email');
@@ -19,13 +18,16 @@ export default function LoginScreen() {
   const [showPw,     setShowPw]     = useState(false);
 
   const [phone,      setPhone]      = useState('');
-  const [otp,        setOtp]        = useState('');
-  const [phoneStep,  setPhoneStep]  = useState<PhoneStep>('number');
+  const [phonePw,    setPhonePw]    = useState('');
+  const [showPhonePw, setShowPhonePw] = useState(false);
 
   const [username,   setUsername]   = useState('');
   const [unPassword, setUnPassword] = useState('');
+  const [showUnPw,   setShowUnPw]   = useState(false);
 
   const [loading, setLoading] = useState(false);
+
+  // ── Email ──────────────────────────────────────────────────────────────
 
   const handleEmailLogin = async () => {
     if (!email.trim() || !password) return Alert.alert('Missing fields', 'Enter your email and password.');
@@ -35,42 +37,52 @@ export default function LoginScreen() {
     if (error) Alert.alert('Sign in failed', error.message);
   };
 
-  const formatPhone = (p: string) => p.startsWith('+') ? p : `+1${p.replace(/\D/g, '')}`;
+  // ── Phone (look up email by phone → sign in with password) ────────────
 
-  const handleSendOtp = async () => {
-    const formatted = formatPhone(phone);
-    if (formatted.replace(/\D/g, '').length < 10) return Alert.alert('Invalid number', 'Enter a valid phone number.');
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithOtp({ phone: formatted });
-    setLoading(false);
-    if (error) Alert.alert('Error', error.message);
-    else setPhoneStep('otp');
+  const normalizePhone = (p: string) => {
+    const digits = p.replace(/\D/g, '');
+    return digits.length >= 10 ? digits.slice(-10) : digits;
   };
 
-  const handleVerifyOtp = async () => {
-    if (otp.length !== 6) return Alert.alert('Invalid code', 'Enter the 6-digit code.');
-    setLoading(true);
-    const { error } = await supabase.auth.verifyOtp({ phone: formatPhone(phone), token: otp, type: 'sms' });
-    setLoading(false);
-    if (error) Alert.alert('Invalid code', error.message);
-  };
-
-  const handleUsernameLogin = async () => {
-    if (!username.trim() || !unPassword) return Alert.alert('Missing fields', 'Enter your name and password.');
+  const handlePhoneLogin = async () => {
+    const normalized = normalizePhone(phone);
+    if (normalized.length < 10) return Alert.alert('Invalid number', 'Enter a valid 10-digit phone number.');
+    if (!phonePw) return Alert.alert('Missing password', 'Enter your password.');
     setLoading(true);
     const { data: profile, error: lookupErr } = await supabase
       .from('profiles')
       .select('email')
-      .ilike('name', username.trim())
+      .eq('phone', normalized)
       .maybeSingle();
     if (lookupErr || !profile?.email) {
       setLoading(false);
-      return Alert.alert('Not found', 'No account matches that name. Try signing in with email.');
+      return Alert.alert('Not found', 'No account found with that phone number. Try signing in with email.');
+    }
+    const { error } = await signIn(profile.email, phonePw);
+    setLoading(false);
+    if (error) Alert.alert('Sign in failed', error.message);
+  };
+
+  // ── Username (look up email by username → sign in with password) ──────
+
+  const handleUsernameLogin = async () => {
+    if (!username.trim() || !unPassword) return Alert.alert('Missing fields', 'Enter your username and password.');
+    setLoading(true);
+    const { data: profile, error: lookupErr } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('username', username.trim())
+      .maybeSingle();
+    if (lookupErr || !profile?.email) {
+      setLoading(false);
+      return Alert.alert('Not found', 'No account matches that username. Try signing in with email.');
     }
     const { error } = await signIn(profile.email, unPassword);
     setLoading(false);
     if (error) Alert.alert('Sign in failed', error.message);
   };
+
+  // ── Render ─────────────────────────────────────────────────────────────
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -88,14 +100,14 @@ export default function LoginScreen() {
               <TouchableOpacity
                 key={t}
                 style={[styles.tabBtn, tab === t && styles.tabBtnActive]}
-                onPress={() => { setTab(t); setPhoneStep('number'); }}
+                onPress={() => setTab(t)}
               >
                 <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>{t.toUpperCase()}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          {/* Email */}
+          {/* ── Email ── */}
           {tab === 'email' && (
             <>
               <Text style={styles.label}>EMAIL</Text>
@@ -132,8 +144,8 @@ export default function LoginScreen() {
             </>
           )}
 
-          {/* Phone */}
-          {tab === 'phone' && phoneStep === 'number' && (
+          {/* ── Phone ── */}
+          {tab === 'phone' && (
             <>
               <Text style={styles.label}>PHONE NUMBER</Text>
               <TextInput
@@ -144,54 +156,53 @@ export default function LoginScreen() {
                 placeholderTextColor={colors.muted}
                 keyboardType="phone-pad"
               />
-              <TouchableOpacity style={styles.btn} onPress={handleSendOtp} disabled={loading}>
-                <Text style={styles.btnText}>{loading ? 'SENDING…' : 'SEND CODE'}</Text>
-              </TouchableOpacity>
-            </>
-          )}
-          {tab === 'phone' && phoneStep === 'otp' && (
-            <>
-              <Text style={styles.sentNote}>Code sent to {phone}</Text>
-              <Text style={styles.label}>VERIFICATION CODE</Text>
-              <TextInput
-                style={[styles.input, styles.otpInput]}
-                value={otp}
-                onChangeText={setOtp}
-                placeholder="000000"
-                placeholderTextColor={colors.muted}
-                keyboardType="number-pad"
-                maxLength={6}
-              />
-              <TouchableOpacity style={styles.btn} onPress={handleVerifyOtp} disabled={loading}>
-                <Text style={styles.btnText}>{loading ? 'VERIFYING…' : 'VERIFY'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.linkRow} onPress={() => setPhoneStep('number')}>
-                <Text style={styles.linkText}>Use a different number</Text>
+              <Text style={styles.label}>PASSWORD</Text>
+              <View style={styles.pwRow}>
+                <TextInput
+                  style={[styles.input, styles.pwInput]}
+                  value={phonePw}
+                  onChangeText={setPhonePw}
+                  secureTextEntry={!showPhonePw}
+                  placeholder="••••••••"
+                  placeholderTextColor={colors.muted}
+                />
+                <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPhonePw(v => !v)}>
+                  <Ionicons name={showPhonePw ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.muted} />
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity style={styles.btn} onPress={handlePhoneLogin} disabled={loading}>
+                <Text style={styles.btnText}>{loading ? 'SIGNING IN…' : 'SIGN IN'}</Text>
               </TouchableOpacity>
             </>
           )}
 
-          {/* Username */}
+          {/* ── Username ── */}
           {tab === 'username' && (
             <>
-              <Text style={styles.label}>NAME</Text>
+              <Text style={styles.label}>USERNAME</Text>
               <TextInput
                 style={styles.input}
                 value={username}
                 onChangeText={setUsername}
-                placeholder="Your full name"
+                placeholder="Your username"
                 placeholderTextColor={colors.muted}
-                autoCapitalize="words"
+                autoCapitalize="none"
+                autoCorrect={false}
               />
               <Text style={styles.label}>PASSWORD</Text>
-              <TextInput
-                style={styles.input}
-                value={unPassword}
-                onChangeText={setUnPassword}
-                secureTextEntry
-                placeholder="••••••••"
-                placeholderTextColor={colors.muted}
-              />
+              <View style={styles.pwRow}>
+                <TextInput
+                  style={[styles.input, styles.pwInput]}
+                  value={unPassword}
+                  onChangeText={setUnPassword}
+                  secureTextEntry={!showUnPw}
+                  placeholder="••••••••"
+                  placeholderTextColor={colors.muted}
+                />
+                <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowUnPw(v => !v)}>
+                  <Ionicons name={showUnPw ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.muted} />
+                </TouchableOpacity>
+              </View>
               <TouchableOpacity style={styles.btn} onPress={handleUsernameLogin} disabled={loading}>
                 <Text style={styles.btnText}>{loading ? 'SIGNING IN…' : 'SIGN IN'}</Text>
               </TouchableOpacity>
@@ -246,9 +257,6 @@ const styles = StyleSheet.create({
   pwRow:   { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   pwInput: { flex: 1, marginBottom: 0 },
   eyeBtn:  { padding: 12, marginLeft: 4 },
-
-  otpInput: { textAlign: 'center', fontSize: 24, letterSpacing: 8 },
-  sentNote: { fontSize: 13, color: colors.muted, marginBottom: 16, textAlign: 'center' },
 
   btn:     { backgroundColor: colors.greenDk, borderRadius: 8, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
   btnText: { color: colors.cream, fontWeight: '800', fontSize: 14, letterSpacing: 1.5 },
