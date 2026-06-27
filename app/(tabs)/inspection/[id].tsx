@@ -109,9 +109,11 @@ export default function InspectionDetailScreen() {
     })();
   }, [id]);
 
+  const isComplete = status === 'complete';
+
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerRight: () => (
+      headerRight: isComplete ? undefined : () => (
         <TouchableOpacity onPress={() => handleSave()} style={{ paddingHorizontal: 8 }} disabled={saving}>
           {saving
             ? <ActivityIndicator size="small" color={colors.cream} />
@@ -119,7 +121,7 @@ export default function InspectionDetailScreen() {
         </TouchableOpacity>
       ),
     });
-  }, [navigation, saving, title, date, location, sections]);
+  }, [navigation, saving, isComplete, title, date, location, sections]);
 
   const score       = calcScore(sections);
   const totalQ      = sections.filter(s => s.enabled).flatMap(s => s.questions).length;
@@ -216,18 +218,26 @@ export default function InspectionDetailScreen() {
         </View>
       )}
 
+      {/* Completed banner */}
+      {isComplete && (
+        <View style={st.lockedBanner}>
+          <Ionicons name="lock-closed" size={15} color={colors.greenMd} />
+          <Text style={st.lockedTxt}>This inspection is completed and cannot be edited.</Text>
+        </View>
+      )}
+
       {/* Metadata */}
       <View style={st.metaCard}>
         <Text style={st.metaLbl}>TITLE</Text>
-        <TextInput style={st.metaInp} value={title} onChangeText={setTitle}
-          placeholder="Inspection title" placeholderTextColor={colors.muted} />
+        <TextInput style={[st.metaInp, isComplete && st.readOnly]} value={title} onChangeText={setTitle}
+          placeholder="Inspection title" placeholderTextColor={colors.muted} editable={!isComplete} />
         <Text style={[st.metaLbl, { marginTop: 12 }]}>DATE</Text>
-        <TextInput style={st.metaInp} value={date} onChangeText={setDate}
+        <TextInput style={[st.metaInp, isComplete && st.readOnly]} value={date} onChangeText={setDate}
           placeholder="YYYY-MM-DD" placeholderTextColor={colors.muted}
-          keyboardType="numbers-and-punctuation" />
+          keyboardType="numbers-and-punctuation" editable={!isComplete} />
         <Text style={[st.metaLbl, { marginTop: 12 }]}>LOCATION</Text>
-        <TextInput style={st.metaInp} value={location} onChangeText={setLocation}
-          placeholder="Location or area" placeholderTextColor={colors.muted} />
+        <TextInput style={[st.metaInp, isComplete && st.readOnly]} value={location} onChangeText={setLocation}
+          placeholder="Location or area" placeholderTextColor={colors.muted} editable={!isComplete} />
       </View>
 
       {/* Sections */}
@@ -237,6 +247,7 @@ export default function InspectionDetailScreen() {
           section={section}
           openNotes={openNotes}
           uploadingQId={uploading}
+          isComplete={isComplete}
           onToggle={() => toggleSection(section.id)}
           onSetResult={(qId, r) => setResult(section.id, qId, r)}
           onSetNote={(qId, n) => setQNote(section.id, qId, n)}
@@ -276,6 +287,7 @@ type SCProps = {
   section: ISection;
   openNotes: Set<string>;
   uploadingQId: string | null;
+  isComplete: boolean;
   onToggle: () => void;
   onSetResult: (qId: string, r: QResult) => void;
   onSetNote: (qId: string, n: string) => void;
@@ -284,7 +296,7 @@ type SCProps = {
   onSectionNote: (n: string) => void;
 };
 
-function SectionCard({ section, openNotes, uploadingQId, onToggle, onSetResult, onSetNote, onToggleNote, onPickPhoto, onSectionNote }: SCProps) {
+function SectionCard({ section, openNotes, uploadingQId, isComplete, onToggle, onSetResult, onSetNote, onToggleNote, onPickPhoto, onSectionNote }: SCProps) {
   const [showSNoteInput, setShowSNoteInput] = useState(false);
   const pass = section.questions.filter(q => q.result === 'pass').length;
   const fail = section.questions.filter(q => q.result === 'fail').length;
@@ -316,6 +328,7 @@ function SectionCard({ section, openNotes, uploadingQId, onToggle, onSetResult, 
               isLast={idx === section.questions.length - 1 && !section.notes}
               noteOpen={openNotes.has(q.id)}
               uploading={uploadingQId === q.id}
+              isComplete={isComplete}
               onResult={r => onSetResult(q.id, r)}
               onNote={n => onSetNote(q.id, n)}
               onToggleNote={() => onToggleNote(q.id)}
@@ -323,23 +336,25 @@ function SectionCard({ section, openNotes, uploadingQId, onToggle, onSetResult, 
             />
           ))}
 
-          <TouchableOpacity
-            style={st.sNoteToggle}
-            onPress={() => setShowSNoteInput(v => !v)}
-          >
-            <Ionicons
-              name={section.notes ? 'chatbubble' : 'chatbubble-outline'}
-              size={14}
-              color={section.notes ? colors.greenMd : colors.muted}
-            />
-            <Text style={[st.sNoteLbl, section.notes && { color: colors.greenMd }]}>
-              {section.notes ? 'Section note' : 'Add section note'}
-            </Text>
-          </TouchableOpacity>
+          {!isComplete && (
+            <TouchableOpacity
+              style={st.sNoteToggle}
+              onPress={() => setShowSNoteInput(v => !v)}
+            >
+              <Ionicons
+                name={section.notes ? 'chatbubble' : 'chatbubble-outline'}
+                size={14}
+                color={section.notes ? colors.greenMd : colors.muted}
+              />
+              <Text style={[st.sNoteLbl, section.notes && { color: colors.greenMd }]}>
+                {section.notes ? 'Section note' : 'Add section note'}
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {(showSNoteInput || section.notes.length > 0) && (
             <TextInput
-              style={st.sNoteInp}
+              style={[st.sNoteInp, isComplete && st.readOnly]}
               value={section.notes}
               onChangeText={onSectionNote}
               placeholder="Notes for this section…"
@@ -347,6 +362,7 @@ function SectionCard({ section, openNotes, uploadingQId, onToggle, onSetResult, 
               multiline
               numberOfLines={2}
               textAlignVertical="top"
+              editable={!isComplete}
             />
           )}
         </>
@@ -362,6 +378,7 @@ type QRProps = {
   isLast: boolean;
   noteOpen: boolean;
   uploading: boolean;
+  isComplete: boolean;
   onResult: (r: QResult) => void;
   onNote: (n: string) => void;
   onToggleNote: () => void;
@@ -374,7 +391,7 @@ const RESULT_BTNS: { label: string; value: QResult; bg: string }[] = [
   { label: 'N/A',   value: 'na',   bg: colors.muted },
 ];
 
-function QuestionRow({ question, isLast, noteOpen, uploading, onResult, onNote, onToggleNote, onPickPhoto }: QRProps) {
+function QuestionRow({ question, isLast, noteOpen, uploading, isComplete, onResult, onNote, onToggleNote, onPickPhoto }: QRProps) {
   const { result, note, photos } = question;
 
   return (
@@ -388,8 +405,8 @@ function QuestionRow({ question, isLast, noteOpen, uploading, onResult, onNote, 
             <TouchableOpacity
               key={btn.value as string}
               style={[st.rBtn, active && { backgroundColor: btn.bg, borderColor: btn.bg }]}
-              onPress={() => onResult(btn.value)}
-              activeOpacity={0.75}
+              onPress={() => !isComplete && onResult(btn.value)}
+              activeOpacity={isComplete ? 1 : 0.75}
             >
               <Text style={[st.rTxt, active && { color: '#fff', fontWeight: '700' }]}>{btn.label}</Text>
             </TouchableOpacity>
@@ -398,32 +415,37 @@ function QuestionRow({ question, isLast, noteOpen, uploading, onResult, onNote, 
       </View>
 
       <View style={st.qActions}>
-        <TouchableOpacity style={st.qActBtn} onPress={onToggleNote}>
-          <Ionicons
-            name={(noteOpen || note) ? 'chatbubble' : 'chatbubble-outline'}
-            size={15}
-            color={note ? colors.greenMd : colors.muted}
-          />
-          <Text style={[st.qActTxt, note && { color: colors.greenMd }]}>Note</Text>
-        </TouchableOpacity>
+        {note || noteOpen ? (
+          <TouchableOpacity style={st.qActBtn} onPress={() => !isComplete && onToggleNote()}>
+            <Ionicons name="chatbubble" size={15} color={colors.greenMd} />
+            <Text style={[st.qActTxt, { color: colors.greenMd }]}>Note</Text>
+          </TouchableOpacity>
+        ) : !isComplete ? (
+          <TouchableOpacity style={st.qActBtn} onPress={onToggleNote}>
+            <Ionicons name="chatbubble-outline" size={15} color={colors.muted} />
+            <Text style={st.qActTxt}>Note</Text>
+          </TouchableOpacity>
+        ) : null}
 
-        <TouchableOpacity style={st.qActBtn} onPress={onPickPhoto} disabled={uploading}>
-          {uploading
-            ? <ActivityIndicator size="small" color={colors.greenMd} style={{ width: 15 }} />
-            : <Ionicons
-                name={photos.length ? 'camera' : 'camera-outline'}
-                size={15}
-                color={photos.length ? colors.greenMd : colors.muted}
-              />}
-          <Text style={[st.qActTxt, photos.length > 0 && { color: colors.greenMd }]}>
-            {photos.length > 0 ? `${photos.length} Photo${photos.length > 1 ? 's' : ''}` : 'Photo'}
-          </Text>
-        </TouchableOpacity>
+        {photos.length > 0 || !isComplete ? (
+          <TouchableOpacity style={st.qActBtn} onPress={() => !isComplete && onPickPhoto()} disabled={uploading}>
+            {uploading
+              ? <ActivityIndicator size="small" color={colors.greenMd} style={{ width: 15 }} />
+              : <Ionicons
+                  name={photos.length ? 'camera' : 'camera-outline'}
+                  size={15}
+                  color={photos.length ? colors.greenMd : colors.muted}
+                />}
+            <Text style={[st.qActTxt, photos.length > 0 && { color: colors.greenMd }]}>
+              {photos.length > 0 ? `${photos.length} Photo${photos.length > 1 ? 's' : ''}` : 'Photo'}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {(noteOpen || !!note) && (
         <TextInput
-          style={st.noteInp}
+          style={[st.noteInp, isComplete && st.readOnly]}
           value={note}
           onChangeText={onNote}
           placeholder="Add note…"
@@ -431,6 +453,7 @@ function QuestionRow({ question, isLast, noteOpen, uploading, onResult, onNote, 
           multiline
           numberOfLines={2}
           textAlignVertical="top"
+          editable={!isComplete}
         />
       )}
 
@@ -492,6 +515,10 @@ const st = StyleSheet.create({
   completeBtn: { backgroundColor: colors.greenDk, borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 6 },
   completeTxt: { fontSize: 15, fontWeight: '700', color: colors.cream },
 
-  doneBanner:  { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.greenMd + '18', borderRadius: 10, padding: 14, marginTop: 6, borderWidth: 1, borderColor: colors.greenMd + '44' },
-  doneTxt:     { fontSize: 14, fontWeight: '600', color: colors.greenMd },
+  doneBanner:   { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.greenMd + '18', borderRadius: 10, padding: 14, marginTop: 6, borderWidth: 1, borderColor: colors.greenMd + '44' },
+  doneTxt:      { fontSize: 14, fontWeight: '600', color: colors.greenMd },
+
+  lockedBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.greenMd + '12', borderRadius: 10, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: colors.greenMd + '44' },
+  lockedTxt:    { fontSize: 13, color: colors.greenMd, flex: 1 },
+  readOnly:     { opacity: 0.6 },
 });
