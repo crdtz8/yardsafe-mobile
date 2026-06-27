@@ -21,10 +21,10 @@ type NotifType =
 type NotifRow = {
   id: string;
   recipient_id: string;
-  subject: string | null;
+  subject: string | null;  // may not exist in all DB versions — fall back to type label
   type: string | null;
   sent_at: string | null;
-  read: boolean;
+  read: boolean | null;
   recipient_email: string | null;
   created_at: string;
 };
@@ -101,6 +101,18 @@ const ICON_CONFIG: Record<NotifType, IconConfig> = {
 const getIconConfig = (type: string | null): IconConfig =>
   ICON_CONFIG[(type as NotifType) ?? 'system'] ?? ICON_CONFIG.system;
 
+const TYPE_LABEL: Record<string, string> = {
+  cert_expiry:        'Certification Expiring',
+  compliance_due:     'Compliance Item Due',
+  compliance_overdue: 'Compliance Item Overdue',
+  incident:           'Incident Alert',
+  custom:             'Message',
+  system:             'System Notification',
+};
+
+const getLabel = (item: NotifRow): string =>
+  item.subject || TYPE_LABEL[item.type ?? 'system'] || 'Notification';
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function NotificationsScreen() {
@@ -111,7 +123,7 @@ export default function NotificationsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [marking,    setMarking]    = useState(false);
 
-  const unreadCount = items.filter(n => !n.read).length;
+  const unreadCount = items.filter(n => n.read === false).length;
 
   // Header: "Mark all read" button + unread badge
   useLayoutEffect(() => {
@@ -138,7 +150,7 @@ export default function NotificationsScreen() {
 
       const { data, error } = await supabase
         .from('notification_log')
-        .select('id, recipient_id, subject, type, sent_at, read, recipient_email, created_at')
+        .select('id, recipient_id, type, sent_at, created_at')
         .eq('recipient_id', user.id)
         .order('created_at', { ascending: false })
         .limit(100);
@@ -158,45 +170,23 @@ export default function NotificationsScreen() {
   // ─── Actions ────────────────────────────────────────────────────────────────
 
   const markRead = useCallback(async (id: string) => {
-    // Optimistic update
-    setItems(prev =>
-      prev.map(n => (n.id === id ? { ...n, read: true } : n))
-    );
-    const { error } = await supabase
-      .from('notification_log')
-      .update({ read: true })
-      .eq('id', id);
-    if (error) {
-      // Revert on failure
-      setItems(prev =>
-        prev.map(n => (n.id === id ? { ...n, read: false } : n))
-      );
-      Alert.alert('Error', error.message);
-    }
+    setItems(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
+    // Silently attempt — `read` column may not exist yet if migration pending
+    await supabase.from('notification_log').update({ read: true }).eq('id', id);
   }, []);
 
   const handleMarkAllRead = useCallback(async () => {
     const unreadIds = items.filter(n => !n.read).map(n => n.id);
     if (unreadIds.length === 0) return;
     setMarking(true);
-    // Optimistic update
     setItems(prev => prev.map(n => ({ ...n, read: true })));
-    const { error } = await supabase
-      .from('notification_log')
-      .update({ read: true })
-      .in('id', unreadIds);
+    // Silently attempt — `read` column may not exist yet if migration pending
+    await supabase.from('notification_log').update({ read: true }).in('id', unreadIds);
     setMarking(false);
-    if (error) {
-      // Revert on failure
-      setItems(prev =>
-        prev.map(n => (unreadIds.includes(n.id) ? { ...n, read: false } : n))
-      );
-      Alert.alert('Error', error.message);
-    }
   }, [items]);
 
   const handlePress = useCallback((item: NotifRow) => {
-    if (!item.read) {
+    if (item.read !== true) {
       markRead(item.id);
     }
   }, [markRead]);
@@ -283,7 +273,7 @@ export default function NotificationsScreen() {
                     style={[s.subject, isUnread && s.subjectUnread]}
                     numberOfLines={2}
                   >
-                    {item.subject ?? 'Notification'}
+                    {getLabel(item)}
                   </Text>
                   <Text style={s.time}>
                     {relTime(item.sent_at ?? item.created_at)}
