@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
-import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
+import { Video, Audio, ResizeMode, AVPlaybackStatus } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 
@@ -24,6 +24,11 @@ export default function TrainingPlayerScreen() {
   const [status, setStatus] = useState<AVPlaybackStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Allow audio to play on iOS regardless of the ringer/silent switch
+    Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+  }, []);
 
   useEffect(() => {
     if (title) navigation.setOptions({ title });
