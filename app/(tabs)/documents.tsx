@@ -214,7 +214,7 @@ export default function DocumentsScreen() {
   // ── Render ────────────────────────────────────────────────────────────
 
   return (
-    <>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Tab selector */}
       <View style={s.tabs}>
         <TouchableOpacity style={[s.tab, tab === 'documents' && s.tabActive]} onPress={() => setTab('documents')}>
@@ -435,7 +435,7 @@ export default function DocumentsScreen() {
           </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
-    </>
+    </View>
   );
 }
 
