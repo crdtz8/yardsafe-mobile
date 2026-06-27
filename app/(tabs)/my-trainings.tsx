@@ -4,6 +4,7 @@ import {
   Alert, TouchableOpacity, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
@@ -67,12 +68,13 @@ export default function MyTrainingsScreen() {
 
   const openTraining = useCallback((item: Assignment) => {
     const t = item.trainings;
-    const url = t?.type === 'video' ? t?.video_url : t?.doc_url;
-    if (!url) {
+    if (t?.type === 'video' && t?.video_url) {
+      router.push({ pathname: '/(tabs)/training-player', params: { url: t.video_url, title: t.title ?? '' } } as any);
+    } else if (t?.doc_url) {
+      Linking.openURL(t.doc_url).catch(() => Alert.alert('Error', 'Could not open document.'));
+    } else {
       Alert.alert('No content', 'This training has no linked video or document yet.');
-      return;
     }
-    Linking.openURL(url).catch(() => Alert.alert('Error', 'Could not open training content.'));
   }, []);
 
   const markComplete = useCallback((item: Assignment) => {

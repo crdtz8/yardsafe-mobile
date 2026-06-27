@@ -3,6 +3,7 @@ import {
   View, Text, SectionList, TouchableOpacity, StyleSheet,
   ActivityIndicator, RefreshControl, Linking, Alert,
 } from 'react-native';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
@@ -54,12 +55,13 @@ export default function TrainingScreen() {
   const onRefresh = () => { setRefreshing(true); load(); };
 
   const openCourse = (item: Course) => {
-    const url = item.type === 'video' ? item.video_url : item.doc_url;
-    if (!url) {
+    if (item.type === 'video' && item.video_url) {
+      router.push({ pathname: '/(tabs)/training-player', params: { url: item.video_url, title: item.title } } as any);
+    } else if (item.doc_url) {
+      Linking.openURL(item.doc_url).catch(() => Alert.alert('Error', 'Could not open document.'));
+    } else {
       Alert.alert('No content', 'This course has no linked video or document yet.');
-      return;
     }
-    Linking.openURL(url).catch(() => Alert.alert('Error', 'Could not open course content.'));
   };
 
   const filteredSections: Section[] = filter === 'all'

@@ -131,14 +131,6 @@ const TILES: TileDef[] = [
     },
   },
   {
-    id: 'sds', label: 'SDS LIBRARY', icon: 'flask-outline', unit: 'sheets', route: '/(tabs)/sds',
-    roles: ['admin', 'safety_manager', 'manager'],
-    count: async (cid) => {
-      const { count } = await supabase.from('sds_documents').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('is_active', true);
-      return count ?? 0;
-    },
-  },
-  {
     id: 'notifications', label: 'NOTIFICATIONS', icon: 'notifications-outline', unit: 'unread', route: '/(tabs)/notifications',
     roles: ['admin', 'safety_manager', 'manager', 'employee'],
     count: async (_cid, uid) => {
