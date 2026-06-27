@@ -6,25 +6,26 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
-type Assignment = {
+type Completion = {
   id: string;
   completed_at: string;
+  score: number | null;
   trainings: { title: string; type: string } | null;
 };
 
 export default function MyHistoryScreen() {
-  const [items,      setItems]      = useState<Assignment[]>([]);
+  const [items,      setItems]      = useState<Completion[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setLoading(false); return; }
+    // training_completions is the correct table — separate from training_assignments
     const { data } = await supabase
-      .from('training_assignments')
-      .select('id, completed_at, trainings(title, type)')
+      .from('training_completions')
+      .select('id, completed_at, score, trainings(title, type)')
       .eq('user_id', user.id)
-      .not('completed_at', 'is', null)
       .order('completed_at', { ascending: false });
     setItems((data as any[]) ?? []);
     setLoading(false);
@@ -61,6 +62,11 @@ export default function MyHistoryScreen() {
               <Text style={s.title}>{t?.title ?? '—'}</Text>
               <Text style={s.date}>Completed {new Date(item.completed_at).toLocaleDateString()}</Text>
             </View>
+            {item.score != null && (
+              <Text style={[s.score, item.score >= 80 ? s.scorePass : s.scoreFail]}>
+                {item.score}%
+              </Text>
+            )}
             <Ionicons
               name={t?.type === 'video' ? 'play-circle-outline' : 'document-text-outline'}
               size={18}
@@ -82,8 +88,11 @@ const s = StyleSheet.create({
   emptyHint: { fontSize: 12, color: colors.border, textAlign: 'center' },
   sep:       { height: 1, backgroundColor: colors.border, marginLeft: 56 },
   row:       { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
-  check:     { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.greenMd, alignItems: 'center', justifyContent: 'center' },
+  check:     { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.greenMd, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   body:      { flex: 1 },
   title:     { fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 2 },
   date:      { fontSize: 12, color: colors.muted },
+  score:     { fontSize: 13, fontWeight: '700', marginRight: 4 },
+  scorePass: { color: colors.greenMd },
+  scoreFail: { color: colors.danger },
 });

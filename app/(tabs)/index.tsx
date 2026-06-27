@@ -25,15 +25,18 @@ const TILES: TileDef[] = [
     id: 'my_trainings', label: 'MY TRAININGS', icon: 'school-outline', unit: 'assigned', route: '/(tabs)/my-trainings',
     roles: ['employee'],
     count: async (_cid, uid) => {
-      const { count } = await supabase.from('training_assignments').select('id', { count: 'exact', head: true }).eq('user_id', uid).is('completed_at', null);
-      return count ?? 0;
+      const [{ count: assigned }, { count: completed }] = await Promise.all([
+        supabase.from('training_assignments').select('id', { count: 'exact', head: true }).eq('user_id', uid),
+        supabase.from('training_completions').select('id', { count: 'exact', head: true }).eq('user_id', uid),
+      ]);
+      return Math.max(0, (assigned ?? 0) - (completed ?? 0));
     },
   },
   {
     id: 'my_history', label: 'MY HISTORY', icon: 'time-outline', unit: 'completed', route: '/(tabs)/my-history',
     roles: ['employee'],
     count: async (_cid, uid) => {
-      const { count } = await supabase.from('training_assignments').select('id', { count: 'exact', head: true }).eq('user_id', uid).not('completed_at', 'is', null);
+      const { count } = await supabase.from('training_completions').select('id', { count: 'exact', head: true }).eq('user_id', uid);
       return count ?? 0;
     },
   },
@@ -177,15 +180,25 @@ export default function DashboardScreen() {
       .is('archived_at', null);
     setEmpCount(ec ?? 0);
 
-    // Overdue training assignments
+    // Overdue: trainings past due_date that have no completion record
+    // due_date lives on trainings table; check via training_assignments → trainings join
     const today = new Date().toISOString().split('T')[0];
-    const { count: oc } = await supabase
+    const { data: overdueData } = await supabase
       .from('training_assignments')
-      .select('id', { count: 'exact', head: true })
+      .select('training_id, trainings!inner(due_date)')
       .eq('company_id', cid)
-      .is('completed_at', null)
-      .lt('due_date', today);
-    setOverdue(oc ?? 0);
+      .lt('trainings.due_date', today);
+    if (overdueData && overdueData.length > 0) {
+      const overdueIds = (overdueData as any[]).map(r => r.training_id);
+      const { count: completedOd } = await supabase
+        .from('training_completions')
+        .select('id', { count: 'exact', head: true })
+        .eq('company_id', cid)
+        .in('training_id', overdueIds);
+      setOverdue(Math.max(0, overdueIds.length - (completedOd ?? 0)));
+    } else {
+      setOverdue(0);
+    }
 
     // Tile counts (only for visible tiles)
     const visible = TILES.filter(t => t.roles.includes(role));

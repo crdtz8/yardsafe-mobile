@@ -8,9 +8,16 @@ import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
 type Assignment = {
-  id: string;
-  due_date: string | null;
-  trainings: { title: string; type: string; duration: string | null; video_url: string | null; doc_url: string | null } | null;
+  training_id: string;
+  trainings: {
+    id: string;
+    title: string;
+    type: string;
+    duration: string | null;
+    due_date: string | null;
+    video_url: string | null;
+    doc_url: string | null;
+  } | null;
 };
 
 export default function MyTrainingsScreen() {
@@ -21,13 +28,37 @@ export default function MyTrainingsScreen() {
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setLoading(false); return; }
-    const { data } = await supabase
+
+    // Load all assignments for this user
+    const { data: assignments, error } = await supabase
       .from('training_assignments')
-      .select('id, due_date, trainings(title, type, duration, video_url, doc_url)')
-      .eq('user_id', user.id)
-      .is('completed_at', null)
-      .order('due_date', { ascending: true, nullsFirst: false });
-    setItems((data as any[]) ?? []);
+      .select('training_id, trainings(id, title, type, duration, due_date, video_url, doc_url)')
+      .eq('user_id', user.id);
+
+    if (error) { console.warn('training_assignments error:', error.message); }
+
+    // Load completions separately (training_completions is a separate table from training_assignments)
+    const { data: completions } = await supabase
+      .from('training_completions')
+      .select('training_id')
+      .eq('user_id', user.id);
+
+    const completedIds = new Set((completions ?? []).map((c: any) => c.training_id));
+
+    // Show only assignments that have no completion record
+    const pending = (assignments ?? []).filter((a: any) => !completedIds.has(a.training_id));
+
+    // Sort by due_date ascending (nulls last)
+    pending.sort((a: any, b: any) => {
+      const da = a.trainings?.due_date;
+      const db = b.trainings?.due_date;
+      if (!da && !db) return 0;
+      if (!da) return 1;
+      if (!db) return -1;
+      return new Date(da).getTime() - new Date(db).getTime();
+    });
+
+    setItems(pending as Assignment[]);
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -35,7 +66,7 @@ export default function MyTrainingsScreen() {
   useEffect(() => { load(); }, [load]);
 
   const openTraining = useCallback((item: Assignment) => {
-    const t = item.trainings as any;
+    const t = item.trainings;
     const url = t?.type === 'video' ? t?.video_url : t?.doc_url;
     if (!url) {
       Alert.alert('No content', 'This training has no linked video or document yet.');
@@ -45,7 +76,7 @@ export default function MyTrainingsScreen() {
   }, []);
 
   const markComplete = useCallback((item: Assignment) => {
-    const t = item.trainings as any;
+    const t = item.trainings;
     Alert.alert(
       'Mark Complete',
       `Mark "${t?.title ?? 'this training'}" as completed?`,
@@ -55,10 +86,16 @@ export default function MyTrainingsScreen() {
           text: 'Mark Complete',
           style: 'default',
           onPress: async () => {
-            await supabase
-              .from('training_assignments')
-              .update({ completed_at: new Date().toISOString() })
-              .eq('id', item.id);
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+            // Insert into training_completions (separate table from training_assignments)
+            const { error } = await supabase
+              .from('training_completions')
+              .insert({ training_id: item.training_id, user_id: user.id, completed_at: new Date().toISOString() });
+            if (error) {
+              Alert.alert('Error', error.message);
+              return;
+            }
             load();
           },
         },
@@ -71,7 +108,7 @@ export default function MyTrainingsScreen() {
   return (
     <FlatList
       data={items}
-      keyExtractor={i => i.id}
+      keyExtractor={i => i.training_id}
       style={s.list}
       contentContainerStyle={items.length === 0 ? s.empty : undefined}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.greenMd} />}
@@ -84,8 +121,9 @@ export default function MyTrainingsScreen() {
         </View>
       }
       renderItem={({ item }) => {
-        const t = item.trainings as any;
-        const overdue = item.due_date && new Date(item.due_date) < new Date();
+        const t = item.trainings;
+        const dueDate = t?.due_date ? new Date(t.due_date) : null;
+        const overdue = dueDate && dueDate < new Date();
         const hasContent = !!(t?.type === 'video' ? t?.video_url : t?.doc_url);
         return (
           <TouchableOpacity style={s.row} onPress={() => openTraining(item)} activeOpacity={0.7}>
@@ -97,10 +135,10 @@ export default function MyTrainingsScreen() {
             />
             <View style={s.body}>
               <Text style={s.title}>{t?.title ?? '—'}</Text>
-              {item.due_date && (
-                <Text style={[s.due, overdue && s.overdue]}>
+              {dueDate && (
+                <Text style={[s.due, overdue ? s.overdue : null]}>
                   {overdue ? 'Overdue · ' : 'Due '}
-                  {new Date(item.due_date).toLocaleDateString()}
+                  {dueDate.toLocaleDateString()}
                 </Text>
               )}
             </View>
@@ -128,7 +166,7 @@ const s = StyleSheet.create({
   body:      { flex: 1 },
   title:     { fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 2 },
   due:       { fontSize: 12, color: colors.muted },
-  overdue:   { color: colors.red, fontWeight: '600' },
-  dur:       { fontSize: 11, color: colors.muted },
+  overdue:   { color: colors.danger, fontWeight: '600' },
+  dur:       { fontSize: 11, color: colors.muted, marginRight: 8 },
   checkBtn:  { width: 30, height: 30, borderRadius: 15, backgroundColor: colors.greenMd, alignItems: 'center', justifyContent: 'center', marginLeft: 10 },
 });
