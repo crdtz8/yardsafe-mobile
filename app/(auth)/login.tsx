@@ -49,16 +49,12 @@ export default function LoginScreen() {
     if (normalized.length < 10) return Alert.alert('Invalid number', 'Enter a valid 10-digit phone number.');
     if (!phonePw) return Alert.alert('Missing password', 'Enter your password.');
     setLoading(true);
-    const { data: profile, error: lookupErr } = await supabase
-      .from('profiles')
-      .select('email')
-      .eq('phone', normalized)
-      .maybeSingle();
-    if (lookupErr || !profile?.email) {
+    const { data: email, error: lookupErr } = await supabase.rpc('lookup_email_by_phone', { p_phone: normalized });
+    if (lookupErr || !email) {
       setLoading(false);
       return Alert.alert('Not found', 'No account found with that phone number. Try signing in with email.');
     }
-    const { error } = await signIn(profile.email, phonePw);
+    const { error } = await signIn(email, phonePw);
     setLoading(false);
     if (error) Alert.alert('Sign in failed', error.message);
   };
@@ -68,16 +64,12 @@ export default function LoginScreen() {
   const handleUsernameLogin = async () => {
     if (!username.trim() || !unPassword) return Alert.alert('Missing fields', 'Enter your username and password.');
     setLoading(true);
-    const { data: profile, error: lookupErr } = await supabase
-      .from('profiles')
-      .select('email')
-      .eq('username', username.trim())
-      .maybeSingle();
-    if (lookupErr || !profile?.email) {
+    const { data: email, error: lookupErr } = await supabase.rpc('lookup_email_by_username', { p_username: username.trim() });
+    if (lookupErr || !email) {
       setLoading(false);
       return Alert.alert('Not found', 'No account matches that username. Try signing in with email.');
     }
-    const { error } = await signIn(profile.email, unPassword);
+    const { error } = await signIn(email, unPassword);
     setLoading(false);
     if (error) Alert.alert('Sign in failed', error.message);
   };
