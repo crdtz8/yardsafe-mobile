@@ -18,6 +18,7 @@ type Assignment = {
     due_date: string | null;
     video_url: string | null;
     doc_url: string | null;
+    quiz_enabled: boolean | null;
     categories: { id: string; name: string } | null;
   } | null;
 };
@@ -34,7 +35,7 @@ export default function MyTrainingsScreen() {
 
     const { data: assignments, error } = await supabase
       .from('training_assignments')
-      .select('training_id, trainings(id, title, type, duration, due_date, video_url, doc_url, categories(id, name))')
+      .select('training_id, trainings(id, title, type, duration, due_date, video_url, doc_url, quiz_enabled, categories(id, name))')
       .eq('user_id', user.id);
 
     if (error) console.warn('training_assignments error:', error.message);
@@ -84,7 +85,7 @@ export default function MyTrainingsScreen() {
   const openTraining = useCallback((item: Assignment) => {
     const t = item.trainings;
     if (t?.type === 'video' && t?.video_url) {
-      router.push({ pathname: '/(tabs)/training-player', params: { url: t.video_url, title: t.title ?? '' } } as any);
+      router.push({ pathname: '/(tabs)/training-player', params: { id: t.id, url: t.video_url, title: t.title ?? '' } } as any);
     } else if (t?.doc_url) {
       Linking.openURL(t.doc_url).catch(() => Alert.alert('Error', 'Could not open document.'));
     } else {
@@ -168,6 +169,9 @@ export default function MyTrainingsScreen() {
           const dueDate = t?.due_date ? new Date(t.due_date) : null;
           const overdue = dueDate && dueDate < new Date();
           const hasContent = !!(t?.type === 'video' ? t?.video_url : t?.doc_url);
+          // Video trainings with a quiz must be completed through the player,
+          // so the quick "mark complete" shortcut is hidden for them.
+          const requiresQuiz = t?.type === 'video' && !!t?.quiz_enabled;
           return (
             <TouchableOpacity style={s.row} onPress={() => openTraining(item)} activeOpacity={0.7}>
               <Ionicons
@@ -189,9 +193,15 @@ export default function MyTrainingsScreen() {
                 )}
               </View>
               {t?.duration && <Text style={s.dur}>{t.duration}</Text>}
-              <TouchableOpacity style={s.checkBtn} onPress={() => markComplete(item)} activeOpacity={0.7}>
-                <Ionicons name="checkmark" size={16} color="#fff" />
-              </TouchableOpacity>
+              {requiresQuiz ? (
+                <View style={s.quizBadge}>
+                  <Ionicons name="shield-checkmark-outline" size={14} color={colors.greenMd} />
+                </View>
+              ) : (
+                <TouchableOpacity style={s.checkBtn} onPress={() => markComplete(item)} activeOpacity={0.7}>
+                  <Ionicons name="checkmark" size={16} color="#fff" />
+                </TouchableOpacity>
+              )}
             </TouchableOpacity>
           );
         }}
@@ -214,9 +224,10 @@ const s = StyleSheet.create({
   title:        { fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 2 },
   cat:          { fontSize: 10, fontWeight: '700', color: colors.greenMd, marginBottom: 2 },
   due:          { fontSize: 12, color: colors.muted },
-  overdue:      { color: colors.danger, fontWeight: '600' },
+  overdue:      { color: colors.red, fontWeight: '600' },
   dur:          { fontSize: 11, color: colors.muted, marginRight: 8 },
   checkBtn:     { width: 30, height: 30, borderRadius: 15, backgroundColor: colors.greenMd, alignItems: 'center', justifyContent: 'center', marginLeft: 10 },
+  quizBadge:    { width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(66,82,62,0.12)', borderWidth: 1, borderColor: colors.greenMd, alignItems: 'center', justifyContent: 'center', marginLeft: 10 },
 
   pillBar:      { backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border, flexGrow: 0 },
   pillContent:  { paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
