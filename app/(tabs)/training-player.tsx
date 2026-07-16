@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable,
   TextInput, ActivityIndicator, Alert,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation, router } from 'expo-router';
@@ -44,6 +44,7 @@ export default function TrainingPlayerScreen() {
   const [training, setTraining] = useState<Training | null>(null);
   const [loading,  setLoading]  = useState(true);
   const [phase,    setPhase]    = useState<Phase>('video');
+  const [watchedEnough, setWatchedEnough] = useState(false); // gates the continue button — no skipping
 
   // Quiz state
   const [answers,   setAnswers]   = useState<Record<string, string>>({});
@@ -137,7 +138,7 @@ export default function TrainingPlayerScreen() {
 
   const retake = () => { setAnswers({}); setSubmitted(false); setScore(null); setPassed(false); };
   const rewatch = () => {
-    setAnswers({}); setSubmitted(false); setScore(null); setPassed(false); setAttempts(0); setPhase('video');
+    setAnswers({}); setSubmitted(false); setScore(null); setPassed(false); setAttempts(0); setWatchedEnough(false); setPhase('video');
   };
 
   if (!url && !id) {
@@ -157,19 +158,24 @@ export default function TrainingPlayerScreen() {
   if (phase === 'video') {
     return (
       <View style={s.container}>
-        {url ? <VideoBlock uri={resolveVideoUri(url)} /> : null}
+        {url ? <VideoBlock uri={resolveVideoUri(url)} onWatchedEnough={() => setWatchedEnough(true)} /> : null}
         <ScrollView contentContainerStyle={s.videoFooter}>
           {title ? <Text style={s.infoTitle}>{title}</Text> : null}
           <Text style={s.hint}>
-            {hasQuiz
-              ? 'Watch the full video, then continue to the required knowledge check.'
-              : 'Watch the full video, then mark this training complete.'}
+            {watchedEnough
+              ? (hasQuiz ? 'Video complete — continue to the required knowledge check.' : 'Video complete — mark this training complete.')
+              : 'Watch the full video to continue. Skipping ahead is disabled.'}
           </Text>
-          <TouchableOpacity style={s.primaryBtn} onPress={handleVideoDone} disabled={saving} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={[s.primaryBtn, !watchedEnough && s.primaryBtnDisabled]}
+            onPress={handleVideoDone}
+            disabled={saving || !watchedEnough}
+            activeOpacity={0.8}
+          >
             {saving
               ? <ActivityIndicator color={colors.cream} />
               : <>
-                  <Ionicons name={hasQuiz ? 'shield-checkmark' : 'checkmark-circle'} size={18} color={colors.cream} />
+                  <Ionicons name={!watchedEnough ? 'lock-closed' : hasQuiz ? 'shield-checkmark' : 'checkmark-circle'} size={18} color={colors.cream} />
                   <Text style={s.primaryBtnTxt}>{hasQuiz ? 'Continue to Quiz' : 'Mark Complete'}</Text>
                 </>}
           </TouchableOpacity>
@@ -289,12 +295,55 @@ export default function TrainingPlayerScreen() {
   );
 }
 
-// Separate component so useVideoPlayer is always called with a defined URI
-function VideoBlock({ uri }: { uri: string }) {
-  const player = useVideoPlayer(uri, p => { p.loop = false; });
+// Separate component so useVideoPlayer is always called with a defined URI.
+// Native controls (and the scrubber) are disabled so the video can't be skipped;
+// the viewer can only play/pause. Progress is tracked to unlock the continue button.
+function VideoBlock({ uri, onWatchedEnough }: { uri: string; onWatchedEnough: () => void }) {
+  const player = useVideoPlayer(uri, p => { p.loop = false; p.timeUpdateEventInterval = 1; });
+  const [progress, setProgress] = useState(0);
+  const [playing,  setPlaying]  = useState(true);
+  const done = useRef(false);
+
+  useEffect(() => {
+    player.play();
+    const markDone = () => { if (!done.current) { done.current = true; onWatchedEnough(); } };
+    const s1 = player.addListener('timeUpdate', ({ currentTime }) => {
+      const dur = player.duration || 0;
+      if (dur > 0) {
+        const pct = currentTime / dur;
+        setProgress(pct);
+        if (pct >= 0.95) markDone();
+      }
+    });
+    const s2 = player.addListener('playToEnd', () => { markDone(); setPlaying(false); });
+    const s3 = player.addListener('playingChange', ({ isPlaying }) => setPlaying(isPlaying));
+    return () => { s1?.remove?.(); s2?.remove?.(); s3?.remove?.(); };
+  }, [player]);
+
+  const toggle = () => { if (player.playing) player.pause(); else player.play(); };
+
   return (
     <View style={s.videoWrap}>
-      <VideoView player={player} style={s.video} allowsFullscreen allowsPictureInPicture nativeControls />
+      <VideoView
+        player={player}
+        style={s.video}
+        nativeControls={false}
+        allowsFullscreen={false}
+        allowsPictureInPicture={false}
+        contentFit="contain"
+      />
+      {/* Tap to play/pause — no scrubber, so no skipping */}
+      <Pressable style={StyleSheet.absoluteFill} onPress={toggle}>
+        {!playing && (
+          <View style={s.playOverlay}>
+            <Ionicons name="play-circle" size={66} color="rgba(255,255,255,0.92)" />
+          </View>
+        )}
+      </Pressable>
+      {/* Non-interactive progress bar */}
+      <View style={s.progressTrack}>
+        <View style={[s.progressFill, { width: `${Math.min(100, Math.max(0, progress * 100))}%` }]} />
+      </View>
     </View>
   );
 }
@@ -305,11 +354,15 @@ const s = StyleSheet.create({
   errText:     { fontSize: 14, color: colors.muted, textAlign: 'center' },
   videoWrap:   { width: '100%', aspectRatio: 16 / 9, backgroundColor: '#000' },
   video:       { width: '100%', height: '100%' },
+  playOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.15)' },
+  progressTrack: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 4, backgroundColor: 'rgba(255,255,255,0.25)' },
+  progressFill:  { height: '100%', backgroundColor: colors.greenLt },
   videoFooter: { padding: 20, backgroundColor: colors.bg, flexGrow: 1, gap: 12 },
   infoTitle:   { fontSize: 17, fontWeight: '700', color: colors.text },
   hint:        { fontSize: 13, color: colors.muted, lineHeight: 19 },
 
   primaryBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.greenDk, paddingVertical: 14, borderRadius: 8, marginTop: 8 },
+  primaryBtnDisabled: { opacity: 0.45 },
   primaryBtnTxt: { color: colors.cream, fontSize: 15, fontWeight: '700', letterSpacing: 0.5 },
   ghostBtn:      { alignItems: 'center', paddingVertical: 12, marginTop: 4 },
   ghostBtnTxt:   { color: colors.muted, fontSize: 13, fontWeight: '600' },
