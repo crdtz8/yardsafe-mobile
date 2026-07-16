@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase';
 
 type Assignment = {
   training_id: string;
+  due_date: string | null; // per-assignment deadline (falls back to training's)
   trainings: {
     id: string;
     title: string;
@@ -35,7 +36,7 @@ export default function MyTrainingsScreen() {
 
     const { data: assignments, error } = await supabase
       .from('training_assignments')
-      .select('training_id, trainings(id, title, type, duration, due_date, video_url, doc_url, quiz_enabled, categories(id, name))')
+      .select('training_id, due_date, trainings(id, title, type, duration, due_date, video_url, doc_url, quiz_enabled, categories(id, name))')
       .eq('user_id', user.id);
 
     if (error) console.warn('training_assignments error:', error.message);
@@ -49,8 +50,8 @@ export default function MyTrainingsScreen() {
     const pending = (assignments ?? []).filter((a: any) => !completedIds.has(a.training_id));
 
     pending.sort((a: any, b: any) => {
-      const da = a.trainings?.due_date;
-      const db = b.trainings?.due_date;
+      const da = a.due_date ?? a.trainings?.due_date;
+      const db = b.due_date ?? b.trainings?.due_date;
       if (!da && !db) return 0;
       if (!da) return 1;
       if (!db) return -1;
@@ -166,7 +167,8 @@ export default function MyTrainingsScreen() {
         }
         renderItem={({ item }) => {
           const t = item.trainings;
-          const dueDate = t?.due_date ? new Date(t.due_date) : null;
+          const effectiveDue = item.due_date ?? t?.due_date;
+          const dueDate = effectiveDue ? new Date(effectiveDue) : null;
           const overdue = dueDate && dueDate < new Date();
           const hasContent = !!(t?.type === 'video' ? t?.video_url : t?.doc_url);
           // Video trainings with a quiz must be completed through the player,
