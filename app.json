@@ -6,20 +6,22 @@
     "orientation": "portrait",
     "scheme": "yardsafe",
     "userInterfaceStyle": "light",
-    "splash": {
-      "backgroundColor": "#2A3226"
-    },
+    "icon": "./assets/icon.png",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.yardsafe.app",
       "buildNumber": "1"
     },
     "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#2A3226"
-      },
       "package": "com.yardsafe.app",
-      "versionCode": 1
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#2A3226"
+      }
     },
     "plugins": [
       "expo-router",
@@ -27,7 +29,23 @@
       "expo-asset",
       "expo-font",
       "expo-web-browser",
-      "expo-video"
+      "expo-video",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "YardSafe accesses your photos so you can attach images to incident reports and equipment inspections.",
+          "cameraPermission": "YardSafe uses the camera so you can photograph incidents and equipment during inspections."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 240,
+          "resizeMode": "contain",
+          "backgroundColor": "#2A3226"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
