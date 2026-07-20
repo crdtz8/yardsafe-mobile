@@ -38,6 +38,8 @@ export default function InspectionsScreen() {
   const [saving,     setSaving]     = useState(false);
   const [draft,      setDraft]      = useState(blankDraft);
   const [pickField,  setPickField]  = useState<string | null>(null);
+  const [templates,  setTemplates]  = useState<{ id: string; name: string; sections: any }[]>([]);
+  const [templateId, setTemplateId] = useState<string>('');
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -63,11 +65,21 @@ export default function InspectionsScreen() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Load custom inspection templates (RLS returns global + own-company) when the
+  // create sheet opens, so a new inspection can start from a company template.
+  useEffect(() => {
+    if (!showCreate) return;
+    setTemplateId('');
+    supabase.from('inspection_templates').select('id, name, sections').order('name')
+      .then(({ data }) => setTemplates((data as any[]) ?? []));
+  }, [showCreate]);
+
   const handleSave = async () => {
     if (!draft.title.trim()) return Alert.alert('Required', 'Enter an inspection title.');
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
     const { data: prof }     = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
+    const chosen = templates.find(t => t.id === templateId);
     const { data: newRow, error } = await supabase.from('inspections').insert({
       title:        draft.title.trim(),
       date:         draft.date || null,
@@ -75,6 +87,9 @@ export default function InspectionsScreen() {
       status:       draft.status,
       inspector_id: user!.id,
       company_id:   prof?.company_id,
+      // Bake the chosen template's checklist into the inspection; null → the
+      // detail screen falls back to the built-in default sections.
+      sections:     chosen?.sections ?? null,
     }).select('id').single();
     setSaving(false);
     if (error) return Alert.alert('Error', error.message);
@@ -166,10 +181,26 @@ export default function InspectionsScreen() {
                 </View>
               )}
 
-              <View style={f.note}>
-                <Ionicons name="information-circle-outline" size={16} color={colors.muted} style={{ marginRight: 6 }} />
-                <Text style={f.noteTxt}>Full checklist and scoring is available in the web app.</Text>
-              </View>
+              <Text style={f.lbl}>CHECKLIST TEMPLATE</Text>
+              <TouchableOpacity style={f.sel} onPress={() => setPickField(p => p === 'tpl' ? null : 'tpl')}>
+                <Text style={f.selVal}>{templates.find(t => t.id === templateId)?.name ?? 'Default checklist'}</Text>
+                <Ionicons name={pickField === 'tpl' ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
+              </TouchableOpacity>
+              {pickField === 'tpl' && (
+                <View style={f.opts}>
+                  <TouchableOpacity style={f.opt} onPress={() => { setTemplateId(''); setPickField(null); }}>
+                    <Text style={f.optTxt}>Default checklist</Text>
+                    {templateId === '' && <Ionicons name="checkmark" size={16} color={colors.greenMd} />}
+                  </TouchableOpacity>
+                  {templates.map((t, i) => (
+                    <TouchableOpacity key={t.id} style={[f.opt, i === templates.length - 1 && f.optLast]}
+                      onPress={() => { setTemplateId(t.id); setPickField(null); }}>
+                      <Text style={f.optTxt}>{t.name}</Text>
+                      {templateId === t.id && <Ionicons name="checkmark" size={16} color={colors.greenMd} />}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
 
               <View style={{ height: 40 }} />
             </ScrollView>
