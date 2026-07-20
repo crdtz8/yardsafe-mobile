@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type Doc = { id: string; title: string; category: string | null; version: string | null; file_url?: string | null; created_at: string };
+type Doc = { id: string; title: string; category: string | null; version: string | null; file_url?: string | null; requires_acknowledgment?: boolean; created_at: string };
 type SdsDoc = { id: string; product_name: string; manufacturer: string | null; chemical_family: string | null; signal_word: string | null; cas_number: string | null; locations: string | null; file_url: string | null; created_at: string };
 
 type Tab = 'documents' | 'sds';
@@ -40,6 +40,9 @@ export default function DocumentsScreen() {
   // Documents state
   const [docs,        setDocs]        = useState<Doc[]>([]);
   const [docsLoading, setDocsLoading] = useState(true);
+  const [userId,      setUserId]      = useState<string>('');
+  const [ackedIds,    setAckedIds]    = useState<Set<string>>(new Set());
+  const [ackBusy,     setAckBusy]     = useState<string | null>(null);
 
   // SDS state
   const [sdsItems,    setSdsItems]    = useState<SdsDoc[]>([]);
@@ -66,10 +69,22 @@ export default function DocumentsScreen() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      setUserId(user.id);
       const { data: prof } = await supabase.from('profiles').select('role, company_id').eq('id', user.id).single();
       if (prof) { setRole(prof.role); setCompanyId(prof.company_id); }
+      const { data: acks } = await supabase.from('document_acknowledgments').select('document_id').eq('employee_id', user.id);
+      setAckedIds(new Set((acks ?? []).map((a: any) => a.document_id)));
     })();
   }, []);
+
+  const acknowledge = async (docId: string) => {
+    if (!userId) return;
+    setAckBusy(docId);
+    const { error } = await supabase.from('document_acknowledgments').insert({ document_id: docId, employee_id: userId });
+    setAckBusy(null);
+    if (error) return Alert.alert('Error', error.message);
+    setAckedIds(prev => new Set(prev).add(docId));
+  };
 
   // ── Header + button ────────────────────────────────────────────────────
 
@@ -94,7 +109,7 @@ export default function DocumentsScreen() {
   const loadDocs = useCallback(async () => {
     const { data } = await supabase
       .from('documents')
-      .select('id, title, category, version, file_url, created_at')
+      .select('id, title, category, version, file_url, requires_acknowledgment, created_at')
       .eq('is_active', true)
       .order('title');
     setDocs((data as Doc[]) ?? []);
@@ -257,6 +272,13 @@ export default function DocumentsScreen() {
                   {item.category && <Text style={s.cat}>{item.category}</Text>}
                   {item.version  && <Text style={s.ver}>v{item.version}</Text>}
                 </View>
+                {!isManager && item.requires_acknowledgment && (
+                  ackedIds.has(item.id)
+                    ? <View style={s.ackDone}><Ionicons name="checkmark-circle" size={14} color={colors.greenMd} /><Text style={s.ackDoneTxt}>Acknowledged</Text></View>
+                    : <TouchableOpacity style={s.ackBtn} onPress={() => acknowledge(item.id)} disabled={ackBusy === item.id}>
+                        <Text style={s.ackBtnTxt}>{ackBusy === item.id ? 'Saving…' : 'Acknowledge Read'}</Text>
+                      </TouchableOpacity>
+                )}
               </View>
               {item.file_url
                 ? <Ionicons name="open-outline" size={16} color={colors.greenMd} />
@@ -467,6 +489,10 @@ const s = StyleSheet.create({
   meta:        { flexDirection: 'row', gap: 8 },
   cat:         { fontSize: 11, color: colors.muted },
   ver:         { fontSize: 11, color: colors.greenMd, fontWeight: '600' },
+  ackBtn:      { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: colors.greenDk },
+  ackBtnTxt:   { fontSize: 12, fontWeight: '700', color: colors.cream, letterSpacing: 0.3 },
+  ackDone:     { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
+  ackDoneTxt:  { fontSize: 12, fontWeight: '600', color: colors.greenMd },
 
   tabs:        { flexDirection: 'row', backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
   tab:         { flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
