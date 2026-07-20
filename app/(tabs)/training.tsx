@@ -2,13 +2,22 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, SectionList, TouchableOpacity, StyleSheet,
   ActivityIndicator, RefreshControl, Linking, Alert,
+  Modal, ScrollView, TextInput, Platform, KeyboardAvoidingView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { callAdminApi } from '@/lib/api';
 
 type Course = { id: string; title: string; type: string; duration: string | null; video_url: string | null; doc_url: string | null };
+
+const defaultDue = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 14);
+  return d.toISOString().split('T')[0];
+};
 type Section = { title: string; data: Course[] };
 
 const TYPE_ICON: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
@@ -21,6 +30,46 @@ export default function TrainingScreen() {
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter,     setFilter]     = useState<'all' | 'video' | 'document'>('all');
+
+  // ── Assignment ──────────────────────────────────────────────────────────
+  const [assignFor,  setAssignFor]  = useState<Course | null>(null);
+  const [employees,  setEmployees]  = useState<{ id: string; name: string }[]>([]);
+  const [selected,   setSelected]   = useState<Set<string>>(new Set());
+  const [dueDate,    setDueDate]    = useState('');
+  const [assigning,  setAssigning]  = useState(false);
+
+  const openAssign = (course: Course) => {
+    setSelected(new Set());
+    setDueDate(defaultDue());
+    setAssignFor(course);
+  };
+  const toggleEmp = (id: string) =>
+    setSelected(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+
+  useEffect(() => {
+    if (!assignFor) return;
+    supabase.from('profiles').select('id, name').is('archived_at', null).order('name')
+      .then(({ data }) => setEmployees((data as any[]) ?? []));
+  }, [assignFor]);
+
+  const doAssign = async () => {
+    if (!assignFor) return;
+    if (selected.size === 0) return Alert.alert('Pick recipients', 'Select at least one employee.');
+    setAssigning(true);
+    let ok = 0, fail = 0;
+    for (const userId of selected) {
+      const { error } = await callAdminApi('assign_training_direct', {
+        trainingId: assignFor.id, userId, dueDate: dueDate || null,
+      });
+      error ? fail++ : ok++;
+    }
+    setAssigning(false);
+    setAssignFor(null);
+    Alert.alert(
+      fail === 0 ? 'Training assigned' : 'Partly assigned',
+      `${assignFor.title} assigned to ${ok} employee${ok !== 1 ? 's' : ''}${fail ? ` · ${fail} failed` : ''}.`,
+    );
+  };
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -127,6 +176,9 @@ export default function TrainingScreen() {
                 <Text style={styles.rowTitle}>{item.title}</Text>
                 {item.duration && <Text style={styles.rowDur}>{item.duration}</Text>}
               </View>
+              <TouchableOpacity style={styles.assignBtn} onPress={() => openAssign(item)} hitSlop={8}>
+                <Ionicons name="person-add-outline" size={18} color={colors.greenMd} />
+              </TouchableOpacity>
               <View style={[styles.typeBadge, item.type === 'video' && styles.typeBadgeVideo]}>
                 <Text style={[styles.typeText, item.type === 'video' && styles.typeTextVideo]}>
                   {item.type.toUpperCase()}
@@ -139,6 +191,45 @@ export default function TrainingScreen() {
         SectionSeparatorComponent={() => <View style={{ height: 16 }} />}
         ItemSeparatorComponent={() => <View style={styles.sep} />}
       />
+
+      {/* Assign modal */}
+      <Modal visible={assignFor !== null} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.greenDk }}>
+          <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+            <View style={styles.mHdr}>
+              <TouchableOpacity onPress={() => setAssignFor(null)}><Text style={styles.mCancel}>Cancel</Text></TouchableOpacity>
+              <Text style={styles.mTitle} numberOfLines={1}>Assign Training</Text>
+              <TouchableOpacity onPress={doAssign} disabled={assigning}>
+                <Text style={[styles.mSave, assigning && { opacity: 0.4 }]}>{assigning ? 'Assigning…' : 'Assign'}</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
+              <Text style={styles.mCourse}>{assignFor?.title}</Text>
+
+              <Text style={styles.mLbl}>DUE DATE</Text>
+              <TextInput style={styles.mInp} value={dueDate} onChangeText={setDueDate}
+                placeholder="YYYY-MM-DD" placeholderTextColor={colors.muted} keyboardType="numbers-and-punctuation" />
+
+              <Text style={styles.mLbl}>RECIPIENTS ({selected.size} selected)</Text>
+              <View style={styles.mOpts}>
+                {employees.length === 0
+                  ? <View style={styles.mOpt}><Text style={{ color: colors.muted, fontSize: 15 }}>Loading…</Text></View>
+                  : employees.map((e, i) => {
+                    const on = selected.has(e.id);
+                    return (
+                      <TouchableOpacity key={e.id} style={[styles.mOpt, i === employees.length - 1 && { borderBottomWidth: 0 }]}
+                        onPress={() => toggleEmp(e.id)}>
+                        <Ionicons name={on ? 'checkbox' : 'square-outline'} size={20} color={on ? colors.greenMd : colors.muted} />
+                        <Text style={styles.mOptTxt}>{e.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })
+                }
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
     </View>
   );
 }
@@ -177,4 +268,17 @@ const styles = StyleSheet.create({
   typeTextVideo:  { color: colors.greenMd },
 
   sep:            { height: 1, backgroundColor: colors.border },
+
+  assignBtn:      { padding: 6, marginRight: 4 },
+
+  mHdr:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.greenDk, paddingHorizontal: 16, paddingVertical: 14 },
+  mTitle:  { fontSize: 15, fontWeight: '700', color: colors.cream, flex: 1, textAlign: 'center' },
+  mCancel: { fontSize: 15, color: colors.greenLt, minWidth: 60 },
+  mSave:   { fontSize: 15, fontWeight: '700', color: colors.cream, textAlign: 'right', minWidth: 60 },
+  mCourse: { fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 8 },
+  mLbl:    { fontSize: 10, fontWeight: '700', color: colors.muted, letterSpacing: 1.5, marginBottom: 6, marginTop: 20 },
+  mInp:    { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text },
+  mOpts:   { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, overflow: 'hidden' },
+  mOpt:    { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.border },
+  mOptTxt: { fontSize: 15, color: colors.text, flex: 1 },
 });
