@@ -8,6 +8,7 @@ import { useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { callAdminApi, callNotificationsApi, genTempPassword } from '@/lib/api';
 
 type Employee = { id: string; name: string; email: string; role: string; phone?: string };
 
@@ -34,6 +35,7 @@ export default function EmployeesScreen() {
   const [saving,     setSaving]     = useState(false);
   const [draft,      setDraft]      = useState(blankDraft);
   const [pickField,  setPickField]  = useState<string | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
 
   const showModal = showCreate || editItem !== null;
 
@@ -93,43 +95,67 @@ export default function EmployeesScreen() {
       return;
     }
 
-    // Create new employee
+    // Create new employee via the secure server API — same path as the web
+    // portal. This creates the account server-side (does NOT hijack the admin's
+    // session the way client-side signUp does) and sends the branded YardSafe
+    // invite email via Resend so the employee can set their own password.
     if (!draft.email.trim()) return (setSaving(false), Alert.alert('Required', 'Enter the employee\'s email.'));
     const emailLower = draft.email.toLowerCase().trim();
 
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: prof }     = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
-
-    // Sign up the new employee — Supabase creates the auth user and triggers profile creation
-    const { error: signUpError } = await supabase.auth.signUp({
-      email:    emailLower,
-      password: Math.random().toString(36).slice(-10) + 'A1!', // temporary random password
-      options:  {
-        data: { name: draft.name.trim(), role: draft.role },
-      },
+    const { error } = await callAdminApi('create', {
+      name:               draft.name.trim(),
+      email:              emailLower,
+      phone:              draft.phone.trim() || '',
+      role:               draft.role,
+      groupId:            null,
+      password:           genTempPassword(),
+      mustChangePassword: true,
+      sendInviteEmail:    true,
     });
 
-    if (signUpError) {
-      setSaving(false);
-      // If the user already exists, try updating their profile instead
-      if (signUpError.message.includes('already registered')) {
+    setSaving(false);
+    if (error) {
+      const msg = (error.message || '').toLowerCase();
+      if (msg.includes('already') || msg.includes('registered')) {
         return Alert.alert('Already exists', 'An account with that email already exists.');
       }
-      return Alert.alert('Error', signUpError.message);
+      return Alert.alert('Could not create employee', error.message);
     }
 
-    // Update the profile with company_id and role (the trigger may have created it)
-    await supabase.from('profiles')
-      .update({ name: draft.name.trim(), role: draft.role, company_id: prof?.company_id })
-      .eq('email', emailLower);
-
-    setSaving(false);
     Alert.alert(
       'Invite sent',
-      `${draft.name} will receive a confirmation email at ${emailLower}. They can set their password from that link.`,
+      `${draft.name} will receive a YardSafe invite email at ${emailLower} to set their password and sign in.`,
     );
     setShowCreate(false);
     load();
+  };
+
+  const resendInvite = async () => {
+    if (!editItem) return;
+    setActionBusy(true);
+    const { error } = await callAdminApi('resend_invite', { userId: editItem.id });
+    setActionBusy(false);
+    Alert.alert(error ? 'Error' : 'Invite resent',
+      error ? error.message : `A new YardSafe invite was emailed to ${editItem.email}.`);
+  };
+
+  const resetPassword = async () => {
+    if (!editItem) return;
+    setActionBusy(true);
+    const { error } = await callAdminApi('request_reset', { email: editItem.email });
+    setActionBusy(false);
+    Alert.alert(error ? 'Error' : 'Reset email sent',
+      error ? error.message : `A password-reset email was sent to ${editItem.email}.`);
+  };
+
+  const sendReminder = async () => {
+    if (!editItem) return;
+    setActionBusy(true);
+    const { data, error } = await callNotificationsApi('reminder', { recipientIds: [editItem.id] });
+    setActionBusy(false);
+    if (error) return Alert.alert('Error', error.message);
+    if (data?.sent) Alert.alert('Reminder sent', `${editItem.name} was emailed their outstanding trainings.`);
+    else Alert.alert('All caught up', `${editItem.name} has no outstanding trainings — nothing to remind.`);
   };
 
   const handleArchive = () => {
@@ -247,10 +273,28 @@ export default function EmployeesScreen() {
               )}
 
               {editItem && (
-                <TouchableOpacity style={f.archiveBtn} onPress={handleArchive}>
-                  <Ionicons name="archive-outline" size={16} color={colors.red} style={{ marginRight: 8 }} />
-                  <Text style={f.archiveTxt}>Archive Employee</Text>
-                </TouchableOpacity>
+                <>
+                  <Text style={f.lbl}>ACTIONS</Text>
+                  <View style={f.actionsWrap}>
+                    <TouchableOpacity style={f.actionBtn} onPress={sendReminder} disabled={actionBusy}>
+                      <Ionicons name="notifications-outline" size={18} color={colors.greenMd} />
+                      <Text style={f.actionTxt}>Send Reminder</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={f.actionBtn} onPress={resendInvite} disabled={actionBusy}>
+                      <Ionicons name="paper-plane-outline" size={18} color={colors.greenMd} />
+                      <Text style={f.actionTxt}>Resend Invite</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={f.actionBtn} onPress={resetPassword} disabled={actionBusy}>
+                      <Ionicons name="key-outline" size={18} color={colors.greenMd} />
+                      <Text style={f.actionTxt}>Reset Password</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <TouchableOpacity style={f.archiveBtn} onPress={handleArchive}>
+                    <Ionicons name="archive-outline" size={16} color={colors.red} style={{ marginRight: 8 }} />
+                    <Text style={f.archiveTxt}>Archive Employee</Text>
+                  </TouchableOpacity>
+                </>
               )}
 
               <View style={{ height: 40 }} />
@@ -309,6 +353,9 @@ const f = StyleSheet.create({
   optTxt:          { fontSize: 15, color: colors.text, flex: 1 },
   note:            { flexDirection: 'row', alignItems: 'flex-start', marginTop: 28, padding: 12, backgroundColor: colors.surface, borderRadius: 8, borderWidth: 1, borderColor: colors.border },
   noteTxt:         { fontSize: 13, color: colors.muted, flex: 1 },
-  archiveBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 36, padding: 14, borderRadius: 8, borderWidth: 1, borderColor: colors.red },
+  actionsWrap:     { gap: 8 },
+  actionBtn:       { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  actionTxt:       { fontSize: 15, fontWeight: '600', color: colors.text },
+  archiveBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 28, padding: 14, borderRadius: 8, borderWidth: 1, borderColor: colors.red },
   archiveTxt:      { fontSize: 15, fontWeight: '600', color: colors.red },
 });

@@ -10,8 +10,8 @@ import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
 type Action = {
-  id: string; title: string; status: string | null; priority: string | null;
-  due_date: string | null; assignee: { name: string } | null;
+  id: string; title: string; description: string | null; status: string | null; priority: string | null;
+  due_date: string | null; assigned_to: string | null; assignee: { name: string } | null;
 };
 
 const PRIORITY_COLOR: Record<string, string> = {
@@ -61,8 +61,8 @@ export default function CorrectiveScreen() {
   const openEdit = (item: Action) => {
     setDraft({
       title:       item.title ?? '',
-      description: '',
-      assigned_to: '',
+      description: item.description ?? '',
+      assigned_to: item.assigned_to ?? '',
       due_date:    item.due_date ?? '',
       priority:    item.priority ?? 'medium',
       status:      item.status ?? 'open',
@@ -74,7 +74,7 @@ export default function CorrectiveScreen() {
   const load = useCallback(async () => {
     const { data } = await supabase
       .from('corrective_actions')
-      .select('id, title, status, priority, due_date, assignee:profiles!assigned_to(name)')
+      .select('id, title, description, status, priority, due_date, assigned_to, assignee:profiles!assigned_to(name)')
       .order('due_date', { ascending: true, nullsFirst: false });
     setItems((data as any[]) ?? []);
     setLoading(false);

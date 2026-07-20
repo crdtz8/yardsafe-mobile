@@ -3,10 +3,12 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, Alert, KeyboardAvoidingView, Platform, Image,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { signIn } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
+import { requestPasswordReset } from '@/lib/api';
 
 type Tab = 'email' | 'phone' | 'username';
 
@@ -74,6 +76,28 @@ export default function LoginScreen() {
     if (error) Alert.alert('Sign in failed', error.message);
   };
 
+  // ── Forgot password (sends branded reset email via the web API) ─────────
+
+  const handleForgotPassword = async () => {
+    const target = email.toLowerCase().trim();
+    if (!target) return Alert.alert('Enter your email', 'Type your account email above, then tap "Reset via email".');
+    setLoading(true);
+    const { error } = await requestPasswordReset(target);
+    setLoading(false);
+    // Always show a neutral confirmation (don't reveal whether an account exists).
+    Alert.alert(
+      'Check your email',
+      `If an account exists for ${target}, we've sent a link to reset your password.`,
+    );
+    if (error) console.warn('[forgot-password]', error.message);
+  };
+
+  // ── Start free trial (sign-up is web-only) ──────────────────────────────
+
+  const handleStartTrial = () => {
+    WebBrowser.openBrowserAsync('https://yardsafe.app/?signup');
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
@@ -107,7 +131,7 @@ export default function LoginScreen() {
                 style={styles.input}
                 value={email}
                 onChangeText={setEmail}
-                placeholder="you@premierscrap.com"
+                placeholder="you@example.com"
                 placeholderTextColor={colors.muted}
                 keyboardType="email-address"
                 autoCapitalize="none"
@@ -130,7 +154,7 @@ export default function LoginScreen() {
               <TouchableOpacity style={styles.btn} onPress={handleEmailLogin} disabled={loading}>
                 <Text style={styles.btnText}>{loading ? 'SIGNING IN…' : 'SIGN IN'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.linkRow}>
+              <TouchableOpacity style={styles.linkRow} onPress={handleForgotPassword} disabled={loading}>
                 <Text style={styles.linkText}>Forgot password? <Text style={styles.linkBold}>Reset via email</Text></Text>
               </TouchableOpacity>
             </>
@@ -202,7 +226,7 @@ export default function LoginScreen() {
           )}
         </View>
 
-        <TouchableOpacity style={styles.linkRow}>
+        <TouchableOpacity style={styles.linkRow} onPress={handleStartTrial}>
           <Text style={styles.linkText}>New to YardSafe? <Text style={styles.linkBold}>Start a free trial →</Text></Text>
         </TouchableOpacity>
       </ScrollView>

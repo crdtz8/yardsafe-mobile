@@ -58,7 +58,7 @@ export default function MyTrainingsScreen() {
       return new Date(da).getTime() - new Date(db).getTime();
     });
 
-    setItems(pending as Assignment[]);
+    setItems(pending as unknown as Assignment[]);
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -185,7 +185,7 @@ export default function MyTrainingsScreen() {
               <View style={s.body}>
                 <Text style={s.title}>{t?.title ?? '—'}</Text>
                 {(t?.categories as any)?.name && (
-                  <Text style={s.cat}>{(t.categories as any).name}</Text>
+                  <Text style={s.cat}>{(t?.categories as any).name}</Text>
                 )}
                 {dueDate && (
                   <Text style={[s.due, overdue ? s.overdue : null]}>
