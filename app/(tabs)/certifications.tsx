@@ -11,6 +11,8 @@ import { supabase } from '@/lib/supabase';
 
 type CertRecord = {
   id: string;
+  employee_id: string;
+  cert_type_id: string;
   employee: { name: string } | null;
   cert_type: { name: string; is_required: boolean } | null;
   cert_number: string | null;
@@ -38,9 +40,25 @@ export default function CertificationsScreen() {
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [editItem,   setEditItem]   = useState<CertRecord | null>(null);
   const [saving,     setSaving]     = useState(false);
   const [draft,      setDraft]      = useState(blankDraft);
   const [pickField,  setPickField]  = useState<string | null>(null);
+
+  const showModal = showCreate || editItem !== null;
+  const closeModal = () => { setShowCreate(false); setEditItem(null); setPickField(null); };
+
+  const openEdit = (item: CertRecord) => {
+    setDraft({
+      employee_id:     item.employee_id ?? '',
+      cert_type_id:    item.cert_type_id ?? '',
+      cert_number:     item.cert_number ?? '',
+      issue_date:      item.issue_date ?? '',
+      expiration_date: item.expiration_date ?? '',
+    });
+    setPickField(null);
+    setEditItem(item);
+  };
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -57,7 +75,7 @@ export default function CertificationsScreen() {
   const load = useCallback(async () => {
     const { data } = await supabase
       .from('employee_certifications')
-      .select(`id,
+      .select(`id, employee_id, cert_type_id,
         employee:profiles!employee_certifications_employee_id_fkey(name),
         cert_type:certification_types!employee_certifications_cert_type_id_fkey(name, is_required),
         cert_number, issue_date, expiration_date`)
@@ -70,7 +88,7 @@ export default function CertificationsScreen() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (!showCreate) return;
+    if (!showModal) return;
     Promise.all([
       supabase.from('profiles').select('id, name').is('archived_at', null).order('name'),
       supabase.from('certification_types').select('id, name').order('name'),
@@ -78,23 +96,46 @@ export default function CertificationsScreen() {
       setEmployees((emps as any[]) ?? []);
       setCertTypes((types as any[]) ?? []);
     });
-  }, [showCreate]);
+  }, [showModal]);
 
   const handleSave = async () => {
     if (!draft.employee_id)  return Alert.alert('Required', 'Select an employee.');
     if (!draft.cert_type_id) return Alert.alert('Required', 'Select a certification type.');
     setSaving(true);
-    const { error } = await supabase.from('employee_certifications').insert({
+    const payload = {
       employee_id:     draft.employee_id,
       cert_type_id:    draft.cert_type_id,
       cert_number:     draft.cert_number || null,
       issue_date:      draft.issue_date || null,
       expiration_date: draft.expiration_date || null,
-    });
+    };
+    const { error } = editItem
+      ? await supabase.from('employee_certifications').update(payload).eq('id', editItem.id)
+      : await supabase.from('employee_certifications').insert(payload);
     setSaving(false);
     if (error) return Alert.alert('Error', error.message);
-    setShowCreate(false);
+    closeModal();
     load();
+  };
+
+  const handleDelete = () => {
+    if (!editItem) return;
+    Alert.alert(
+      'Delete Certification',
+      `Remove the ${editItem.cert_type?.name ?? 'certification'} record for ${editItem.employee?.name ?? 'this employee'}? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive',
+          onPress: async () => {
+            const { error } = await supabase.from('employee_certifications').delete().eq('id', editItem.id);
+            if (error) return Alert.alert('Error', error.message);
+            closeModal();
+            load();
+          },
+        },
+      ],
+    );
   };
 
   const empName  = (id: string) => employees.find(e => e.id === id)?.name ?? 'Select employee…';
@@ -115,7 +156,7 @@ export default function CertificationsScreen() {
         renderItem={({ item }) => {
           const { label, color } = certStatus(item.expiration_date);
           return (
-            <View style={s.row}>
+            <TouchableOpacity style={s.row} onPress={() => openEdit(item)} activeOpacity={0.7}>
               <View style={s.iconWrap}>
                 <Ionicons name="ribbon-outline" size={20} color={colors.greenMd} />
               </View>
@@ -132,19 +173,19 @@ export default function CertificationsScreen() {
               <View style={[s.badge, { backgroundColor: color + '22' }]}>
                 <Text style={[s.badgeText, { color }]}>{label}</Text>
               </View>
-            </View>
+            </TouchableOpacity>
           );
         }}
       />
 
-      <Modal visible={showCreate} animationType="slide" presentationStyle="pageSheet">
+      <Modal visible={showModal} animationType="slide" presentationStyle="pageSheet">
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.greenDk }}>
           <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={f.hdr}>
-              <TouchableOpacity onPress={() => setShowCreate(false)}>
+              <TouchableOpacity onPress={closeModal}>
                 <Text style={f.cancel}>Cancel</Text>
               </TouchableOpacity>
-              <Text style={f.hdrTitle}>Add Certification</Text>
+              <Text style={f.hdrTitle}>{editItem ? 'Edit Certification' : 'Add Certification'}</Text>
               <TouchableOpacity onPress={handleSave} disabled={saving}>
                 <Text style={[f.save, saving && f.dim]}>{saving ? 'Saving…' : 'Save'}</Text>
               </TouchableOpacity>
@@ -203,6 +244,13 @@ export default function CertificationsScreen() {
               <TextInput style={f.inp} value={draft.expiration_date} onChangeText={set('expiration_date')}
                 placeholder="YYYY-MM-DD" placeholderTextColor={colors.muted} keyboardType="numbers-and-punctuation" />
 
+              {editItem && (
+                <TouchableOpacity style={f.deleteBtn} onPress={handleDelete}>
+                  <Ionicons name="trash-outline" size={16} color={colors.red} />
+                  <Text style={f.deleteTxt}>Delete Certification</Text>
+                </TouchableOpacity>
+              )}
+
               <View style={{ height: 40 }} />
             </ScrollView>
           </KeyboardAvoidingView>
@@ -256,4 +304,6 @@ const f = StyleSheet.create({
   opt:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.border },
   optLast:  { borderBottomWidth: 0 },
   optTxt:   { fontSize: 15, color: colors.text, flex: 1 },
+  deleteBtn:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 32, paddingVertical: 14, borderRadius: 8, borderWidth: 1, borderColor: colors.red + '55', backgroundColor: colors.red + '11' },
+  deleteTxt:{ fontSize: 15, fontWeight: '600', color: colors.red },
 });

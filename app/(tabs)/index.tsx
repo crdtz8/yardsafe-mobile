@@ -237,9 +237,14 @@ export default function DashboardScreen() {
         <Text style={styles.welcome}>WELCOME BACK</Text>
         <View style={styles.nameRow}>
           <Text style={styles.name}>{profile?.name ?? '—'}</Text>
-          <TouchableOpacity onPress={handleSignOut} style={styles.signOutBtn}>
-            <Ionicons name="log-out-outline" size={22} color={colors.greenLt} />
-          </TouchableOpacity>
+          <View style={styles.headerBtns}>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/profile')} style={styles.signOutBtn}>
+              <Ionicons name="person-circle-outline" size={24} color={colors.greenLt} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleSignOut} style={styles.signOutBtn}>
+              <Ionicons name="log-out-outline" size={22} color={colors.greenLt} />
+            </TouchableOpacity>
+          </View>
         </View>
         {(role === 'admin' || role === 'safety_manager' || role === 'manager') && (
           <Text style={styles.meta}>
@@ -283,7 +288,8 @@ const styles = StyleSheet.create({
   logo:       { width: 160, height: 40, alignSelf: 'center', marginBottom: 20 },
   welcome:    { fontSize: 11, fontWeight: '700', color: colors.greenLt, letterSpacing: 2, marginBottom: 4 },
   nameRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  name:       { fontSize: 28, fontWeight: '800', color: colors.cream },
+  name:       { fontSize: 28, fontWeight: '800', color: colors.cream, flex: 1 },
+  headerBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   signOutBtn: { padding: 4 },
   meta:       { fontSize: 12, fontWeight: '600', color: colors.greenLt, letterSpacing: 1 },
 
