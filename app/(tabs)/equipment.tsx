@@ -4,7 +4,7 @@ import {
   Modal, ScrollView, TextInput, TouchableOpacity, Alert, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from 'expo-router';
+import { useNavigation, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
@@ -165,6 +165,16 @@ export default function EquipmentScreen() {
                 {item.location ? ` · ${item.location}` : ''}
               </Text>
             </View>
+            <TouchableOpacity
+              style={s.inspectBtn}
+              hitSlop={8}
+              onPress={() => router.push({
+                pathname: '/(tabs)/equipment-inspection',
+                params: { equipmentId: item.id, equipmentName: item.name, equipmentType: item.equipment_type ?? '' },
+              } as any)}
+            >
+              <Ionicons name="clipboard-outline" size={18} color={colors.greenMd} />
+            </TouchableOpacity>
             {item.status && (
               <View style={[s.badge, { backgroundColor: (STATUS_COLOR[item.status] ?? colors.muted) + '22' }]}>
                 <Text style={[s.badgeText, { color: STATUS_COLOR[item.status] ?? colors.muted }]}>
@@ -284,7 +294,8 @@ const s = StyleSheet.create({
   body:      { flex: 1 },
   title:     { fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 2 },
   sub:       { fontSize: 12, color: colors.muted },
-  badge:     { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 8 },
+  inspectBtn:{ padding: 6, marginLeft: 4 },
+  badge:     { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 4 },
   badgeText: { fontSize: 11, fontWeight: '700' },
 });
 
