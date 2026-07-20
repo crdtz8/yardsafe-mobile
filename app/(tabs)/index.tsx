@@ -227,70 +227,86 @@ export default function DashboardScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.greenMd} />}
-    >
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <Image source={require('@/assets/logo-light.png')} style={styles.logo} resizeMode="contain" />
-        <Text style={styles.welcome}>WELCOME BACK</Text>
-        <View style={styles.nameRow}>
-          <Text style={styles.name}>{profile?.name ?? '—'}</Text>
-          <View style={styles.headerBtns}>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/profile')} style={styles.signOutBtn}>
-              <Ionicons name="person-circle-outline" size={24} color={colors.greenLt} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleSignOut} style={styles.signOutBtn}>
-              <Ionicons name="log-out-outline" size={22} color={colors.greenLt} />
-            </TouchableOpacity>
-          </View>
+    <View style={styles.container}>
+      {/* Fixed banner — logo left, icons right. Stays pinned while scrolling. */}
+      <View style={[styles.banner, { paddingTop: insets.top + 10 }]}>
+        <Image source={require('@/assets/logo-light.png')} style={styles.bannerLogo} resizeMode="contain" />
+        <View style={styles.headerBtns}>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/profile')} style={styles.iconBtn}>
+            <Ionicons name="person-circle-outline" size={26} color={colors.greenLt} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleSignOut} style={styles.iconBtn}>
+            <Ionicons name="log-out-outline" size={24} color={colors.greenLt} />
+          </TouchableOpacity>
         </View>
-        {(role === 'admin' || role === 'safety_manager' || role === 'manager') && (
-          <Text style={styles.meta}>
-            {empCount} {empCount === 1 ? 'EMPLOYEE' : 'EMPLOYEES'}
-            {overdue > 0 ? ` · ${overdue} OVERDUE` : ''}
-          </Text>
-        )}
       </View>
 
-      {/* Tile list */}
-      <View style={styles.list}>
-        {visibleTiles.map((tile, i) => (
-          <TouchableOpacity
-            key={tile.id}
-            style={[styles.tile, i < visibleTiles.length - 1 && styles.tileBorder]}
-            activeOpacity={0.6}
-            onPress={() => router.push(tile.route as any)}
-          >
-            <Ionicons name={tile.icon} size={20} color={colors.greenDk} style={styles.tileIcon} />
-            <View style={styles.tileBody}>
-              <Text style={styles.tileLabel}>{tile.label}</Text>
-              <Text style={styles.tileSub}>{counts[tile.id] ?? 0} {tile.unit}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.muted} />
-          </TouchableOpacity>
-        ))}
-      </View>
-    </ScrollView>
+      <ScrollView
+        style={styles.scroll}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.greenMd} />}
+      >
+        {/* Welcome — scrolls away under the banner */}
+        <View style={styles.welcomeSection}>
+          <Text style={styles.welcome}>WELCOME BACK</Text>
+          <Text style={styles.name}>{profile?.name ?? '—'}</Text>
+          {(role === 'admin' || role === 'safety_manager' || role === 'manager') && (
+            <Text style={styles.meta}>
+              {empCount} {empCount === 1 ? 'EMPLOYEE' : 'EMPLOYEES'}
+              {overdue > 0 ? ` · ${overdue} OVERDUE` : ''}
+            </Text>
+          )}
+        </View>
+
+        {/* Tile list */}
+        <View style={styles.list}>
+          {visibleTiles.map((tile, i) => (
+            <TouchableOpacity
+              key={tile.id}
+              style={[styles.tile, i < visibleTiles.length - 1 && styles.tileBorder]}
+              activeOpacity={0.6}
+              onPress={() => router.push(tile.route as any)}
+            >
+              <Ionicons name={tile.icon} size={20} color={colors.greenDk} style={styles.tileIcon} />
+              <View style={styles.tileBody}>
+                <Text style={styles.tileLabel}>{tile.label}</Text>
+                <Text style={styles.tileSub}>{counts[tile.id] ?? 0} {tile.unit}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
+  container: { flex: 1, backgroundColor: colors.greenDk },
+  scroll:    { flex: 1, backgroundColor: colors.bg },
   center:    { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
 
-  header: {
+  // Pinned top banner
+  banner: {
     backgroundColor: colors.greenDk,
-    paddingBottom: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
+    paddingBottom: 12,
   },
-  logo:       { width: 160, height: 40, alignSelf: 'center', marginBottom: 20 },
+  bannerLogo: { width: 128, height: 32 },
+  headerBtns: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  iconBtn:    { padding: 4 },
+
+  // Scrollable welcome block
+  welcomeSection: {
+    backgroundColor: colors.greenDk,
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 28,
+  },
   welcome:    { fontSize: 11, fontWeight: '700', color: colors.greenLt, letterSpacing: 2, marginBottom: 4 },
-  nameRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  name:       { fontSize: 28, fontWeight: '800', color: colors.cream, flex: 1 },
-  headerBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  signOutBtn: { padding: 4 },
+  name:       { fontSize: 28, fontWeight: '800', color: colors.cream, marginBottom: 4 },
   meta:       { fontSize: 12, fontWeight: '600', color: colors.greenLt, letterSpacing: 1 },
 
   list: {
