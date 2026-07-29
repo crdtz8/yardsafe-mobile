@@ -53,6 +53,7 @@ export default function TrainingPlayerScreen() {
   const [passed,    setPassed]    = useState(false);
   const [attempts,  setAttempts]  = useState(0);
   const [saving,    setSaving]    = useState(false);
+  const [shuffleKey, setShuffleKey] = useState(0); // bump to re-randomize option order
 
   useEffect(() => {
     if (title) navigation.setOptions({ title });
@@ -85,6 +86,23 @@ export default function TrainingPlayerScreen() {
   const gradeable   = useMemo(() => questions.filter(q => q.type !== 'acknowledgment'), [questions]);
   const ackQs       = useMemo(() => questions.filter(q => q.type === 'acknowledgment'), [questions]);
   const lockedOut   = !passed && submitted && attempts >= maxAttempts;
+
+  // Randomize the multiple-choice option order for each attempt. Grading is
+  // text-based (answers[q.id] vs q.correct) so shuffling positions is safe.
+  const quizOptions = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const q of questions) {
+      if (q.type !== 'multiple_choice' || !q.options) continue;
+      const opts = [...q.options];
+      for (let i = opts.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [opts[i], opts[j]] = [opts[j], opts[i]];
+      }
+      map[q.id] = opts;
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shuffleKey, training?.id]);
 
   const recordCompletion = async (pct: number | null, quizAnswers: Record<string, string | null> | null, sig: string | null) => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -136,9 +154,9 @@ export default function TrainingPlayerScreen() {
     }
   };
 
-  const retake = () => { setAnswers({}); setSubmitted(false); setScore(null); setPassed(false); };
+  const retake = () => { setAnswers({}); setSubmitted(false); setScore(null); setPassed(false); setShuffleKey(k => k + 1); };
   const rewatch = () => {
-    setAnswers({}); setSubmitted(false); setScore(null); setPassed(false); setAttempts(0); setWatchedEnough(false); setPhase('video');
+    setAnswers({}); setSubmitted(false); setScore(null); setPassed(false); setAttempts(0); setWatchedEnough(false); setPhase('video'); setShuffleKey(k => k + 1);
   };
 
   if (!url && !id) {
@@ -205,7 +223,7 @@ export default function TrainingPlayerScreen() {
               <View key={q.id} style={s.qCard}>
                 <Text style={s.qText}><Text style={s.qNum}>{i + 1}. </Text>{q.question}</Text>
 
-                {q.type === 'multiple_choice' && (q.options ?? []).map((opt, oi) => {
+                {q.type === 'multiple_choice' && (quizOptions[q.id] ?? q.options ?? []).map((opt, oi) => {
                   const sel = answers[q.id] === opt;
                   return (
                     <TouchableOpacity key={oi} style={[s.opt, sel && s.optSel]} onPress={() => setAnswers(a => ({ ...a, [q.id]: opt }))} activeOpacity={0.7}>
