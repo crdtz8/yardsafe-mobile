@@ -29,6 +29,7 @@ type Question = {
 type Training = {
   id: string;
   title: string;
+  language: string | null;
   quiz_enabled: boolean;
   quiz_pass_pct: number | null;
   quiz_max_attempts: number | null;
@@ -65,7 +66,7 @@ export default function TrainingPlayerScreen() {
       if (!id) { setLoading(false); return; }
       const { data, error } = await supabase
         .from('trainings')
-        .select('id, title, quiz_enabled, quiz_pass_pct, quiz_max_attempts, quiz_questions(id, question, type, options, correct, explanation, sort_order)')
+        .select('id, title, language, quiz_enabled, quiz_pass_pct, quiz_max_attempts, quiz_questions(id, question, type, options, correct, explanation, sort_order)')
         .eq('id', id)
         .single();
       if (!active) return;
@@ -82,6 +83,7 @@ export default function TrainingPlayerScreen() {
   const questions   = training?.quiz_questions ?? [];
   const hasQuiz     = !!training?.quiz_enabled && questions.length > 0;
   const passPct     = training?.quiz_pass_pct ?? 80;
+  const isEs        = (training?.language ?? 'en') === 'es'; // Spanish content → localized True/False labels
   const maxAttempts = training?.quiz_max_attempts ?? 3;
   const gradeable   = useMemo(() => questions.filter(q => q.type !== 'acknowledgment'), [questions]);
   const ackQs       = useMemo(() => questions.filter(q => q.type === 'acknowledgment'), [questions]);
@@ -233,12 +235,16 @@ export default function TrainingPlayerScreen() {
                   );
                 })}
 
-                {q.type === 'true_false' && ['True', 'False'].map(val => {
-                  const sel = answers[q.id] === val;
+                {q.type === 'true_false' && [
+                  { value: 'True',  label: isEs ? 'Verdadero' : 'True' },
+                  { value: 'False', label: isEs ? 'Falso' : 'False' },
+                ].map(({ value, label }) => {
+                  // Value stays canonical 'True'/'False' for grading; only the label localizes.
+                  const sel = answers[q.id] === value;
                   return (
-                    <TouchableOpacity key={val} style={[s.opt, sel && s.optSel]} onPress={() => setAnswers(a => ({ ...a, [q.id]: val }))} activeOpacity={0.7}>
+                    <TouchableOpacity key={value} style={[s.opt, sel && s.optSel]} onPress={() => setAnswers(a => ({ ...a, [q.id]: value }))} activeOpacity={0.7}>
                       <Ionicons name={sel ? 'radio-button-on' : 'radio-button-off'} size={18} color={sel ? colors.greenMd : colors.muted} />
-                      <Text style={[s.optTxt, sel && s.optTxtSel]}>{val}</Text>
+                      <Text style={[s.optTxt, sel && s.optTxtSel]}>{label}</Text>
                     </TouchableOpacity>
                   );
                 })}
