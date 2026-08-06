@@ -31,6 +31,8 @@ export default function AppLayout() {
       <Stack.Screen name="training"       options={{ title: 'Training' }} />
       <Stack.Screen name="incidents"      options={{ title: 'Incidents' }} />
       <Stack.Screen name="employees"      options={{ title: 'Employees' }} />
+      <Stack.Screen name="groups"         options={{ title: 'Groups' }} />
+      <Stack.Screen name="group/[id]"     options={{ title: 'Group', headerBackTitle: 'Groups' }} />
       <Stack.Screen name="library"        options={{ title: 'Training Library' }} />
       <Stack.Screen name="inspections"    options={{ title: 'Safety Inspections' }} />
       <Stack.Screen name="corrective"     options={{ title: 'Corrective Actions' }} />

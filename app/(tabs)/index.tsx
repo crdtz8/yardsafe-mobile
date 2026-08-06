@@ -58,6 +58,14 @@ const TILES: TileDef[] = [
     },
   },
   {
+    id: 'groups', label: 'GROUPS', icon: 'people-circle-outline', unit: 'teams', route: '/(tabs)/groups',
+    roles: ['admin', 'safety_manager', 'manager'],
+    count: async (cid) => {
+      const { count } = await supabase.from('groups').select('id', { count: 'exact', head: true }).eq('company_id', cid);
+      return count ?? 0;
+    },
+  },
+  {
     id: 'library', label: 'TRAINING LIBRARY', icon: 'folder-open-outline', unit: 'courses', route: '/(tabs)/library',
     roles: ['admin', 'safety_manager', 'manager'],
     count: async (cid) => {
