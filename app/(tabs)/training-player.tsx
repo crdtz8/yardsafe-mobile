@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, ActivityIndicator, Alert,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation, router } from 'expo-router';
@@ -320,54 +320,41 @@ export default function TrainingPlayerScreen() {
 }
 
 // Separate component so useVideoPlayer is always called with a defined URI.
-// Native controls (and the scrubber) are disabled so the video can't be skipped;
-// the viewer can only play/pause. Progress is tracked to unlock the continue button.
+// Native controls + fullscreen are on so the viewer can play/pause, scrub, and
+// maximize. The continue-gate counts ACTUAL playback time (not position), so
+// seeking to the end can't unlock it — the viewer has to watch the video.
 function VideoBlock({ uri, onWatchedEnough }: { uri: string; onWatchedEnough: () => void }) {
   const player = useVideoPlayer(uri, p => { p.loop = false; p.timeUpdateEventInterval = 1; });
-  const [progress, setProgress] = useState(0);
-  const [playing,  setPlaying]  = useState(true);
-  const done = useRef(false);
+  const done     = useRef(false);
+  const watched  = useRef(0); // accumulated seconds actually played
+  const lastTime = useRef(0);
 
   useEffect(() => {
     player.play();
     const markDone = () => { if (!done.current) { done.current = true; onWatchedEnough(); } };
     const s1 = player.addListener('timeUpdate', ({ currentTime }) => {
-      const dur = player.duration || 0;
-      if (dur > 0) {
-        const pct = currentTime / dur;
-        setProgress(pct);
-        if (pct >= 0.95) markDone();
-      }
+      const dur   = player.duration || 0;
+      const delta = currentTime - lastTime.current;
+      lastTime.current = currentTime;
+      // Count only real playback ticks (~1s); ignore scrub jumps and rewinds so
+      // seeking to the end can't satisfy the gate.
+      if (delta > 0 && delta <= 2) watched.current += delta;
+      if (dur > 0 && watched.current >= dur * 0.9) markDone();
     });
-    const s2 = player.addListener('playToEnd', () => { markDone(); setPlaying(false); });
-    const s3 = player.addListener('playingChange', ({ isPlaying }) => setPlaying(isPlaying));
-    return () => { s1?.remove?.(); s2?.remove?.(); s3?.remove?.(); };
+    const s2 = player.addListener('playToEnd', () => markDone());
+    return () => { s1?.remove?.(); s2?.remove?.(); };
   }, [player]);
-
-  const toggle = () => { if (player.playing) player.pause(); else player.play(); };
 
   return (
     <View style={s.videoWrap}>
       <VideoView
         player={player}
         style={s.video}
-        nativeControls={false}
-        allowsFullscreen={false}
+        nativeControls
+        allowsFullscreen
         allowsPictureInPicture={false}
         contentFit="contain"
       />
-      {/* Tap to play/pause — no scrubber, so no skipping */}
-      <Pressable style={StyleSheet.absoluteFill} onPress={toggle}>
-        {!playing && (
-          <View style={s.playOverlay}>
-            <Ionicons name="play-circle" size={66} color="rgba(255,255,255,0.92)" />
-          </View>
-        )}
-      </Pressable>
-      {/* Non-interactive progress bar */}
-      <View style={s.progressTrack}>
-        <View style={[s.progressFill, { width: `${Math.min(100, Math.max(0, progress * 100))}%` }]} />
-      </View>
     </View>
   );
 }
