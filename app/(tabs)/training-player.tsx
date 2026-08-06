@@ -320,9 +320,9 @@ export default function TrainingPlayerScreen() {
 }
 
 // Separate component so useVideoPlayer is always called with a defined URI.
-// Native controls + fullscreen are on so the viewer can play/pause, scrub, and
-// maximize. The continue-gate counts ACTUAL playback time (not position), so
-// seeking to the end can't unlock it — the viewer has to watch the video.
+// Native controls + fullscreen are on so the viewer can play/pause and maximize,
+// but requiresLinearPlayback disables the scrubber so the video can't be skipped.
+// The continue-gate counts ACTUAL playback time as a belt-and-suspenders check.
 function VideoBlock({ uri, onWatchedEnough }: { uri: string; onWatchedEnough: () => void }) {
   const player = useVideoPlayer(uri, p => { p.loop = false; p.timeUpdateEventInterval = 1; });
   const done     = useRef(false);
@@ -352,6 +352,7 @@ function VideoBlock({ uri, onWatchedEnough }: { uri: string; onWatchedEnough: ()
         style={s.video}
         nativeControls
         allowsFullscreen
+        requiresLinearPlayback
         allowsPictureInPicture={false}
         contentFit="contain"
       />
