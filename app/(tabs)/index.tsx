@@ -21,9 +21,10 @@ type TileDef = {
 
 const TILES: TileDef[] = [
   // ── Employee-only tiles ──────────────────────────────────────────────────
+  // ── "My Trainings" — assigned-to-me, every role ──────────────────────────
   {
     id: 'my_trainings', label: 'MY TRAININGS', icon: 'school-outline', unit: 'assigned', route: '/(tabs)/my-trainings',
-    roles: ['employee'],
+    roles: ['employee', 'admin', 'safety_manager', 'manager'],
     count: async (_cid, uid) => {
       const [{ count: assigned }, { count: completed }] = await Promise.all([
         supabase.from('training_assignments').select('id', { count: 'exact', head: true }).eq('user_id', uid),
@@ -34,21 +35,13 @@ const TILES: TileDef[] = [
   },
   {
     id: 'my_history', label: 'MY HISTORY', icon: 'time-outline', unit: 'completed', route: '/(tabs)/my-history',
-    roles: ['employee'],
+    roles: ['employee', 'admin', 'safety_manager', 'manager'],
     count: async (_cid, uid) => {
       const { count } = await supabase.from('training_completions').select('id', { count: 'exact', head: true }).eq('user_id', uid);
       return count ?? 0;
     },
   },
   // ── Admin / manager tiles ────────────────────────────────────────────────
-  {
-    id: 'trainings', label: 'MY TRAININGS', icon: 'shield-outline', unit: 'trainings', route: '/(tabs)/training',
-    roles: ['admin', 'safety_manager', 'manager'],
-    count: async (cid) => {
-      const { count } = await supabase.from('trainings').select('id', { count: 'exact', head: true }).eq('company_id', cid);
-      return count ?? 0;
-    },
-  },
   {
     id: 'employees', label: 'EMPLOYEES', icon: 'people-outline', unit: 'employees', route: '/(tabs)/employees',
     roles: ['admin', 'safety_manager', 'manager'],

@@ -28,7 +28,6 @@ export default function AppLayout() {
   return (
     <Stack screenOptions={baseOptions}>
       <Stack.Screen name="index"          options={{ headerShown: false }} />
-      <Stack.Screen name="training"       options={{ title: 'Training' }} />
       <Stack.Screen name="incidents"      options={{ title: 'Incidents' }} />
       <Stack.Screen name="employees"      options={{ title: 'Employees' }} />
       <Stack.Screen name="groups"         options={{ title: 'Groups' }} />
