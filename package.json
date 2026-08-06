@@ -35,6 +35,10 @@
     "react-native-screens": "~4.16.0",
     "react-native-webview": "13.15.0"
   },
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
   "devDependencies": {
     "@babel/core": "^7.24.0",
     "@types/react": "~19.1.10",
