@@ -24,6 +24,12 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleTeamId": "TXG5PANQFZ",
+        "appleId": "cdouthit@premierscrap.com",
+        "ascAppId": "6798494152"
+      }
+    }
   }
 }
