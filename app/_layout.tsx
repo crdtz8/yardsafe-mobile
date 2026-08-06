@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as Notifications from 'expo-notifications';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { registerForPush } from '@/lib/push';
 
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
@@ -11,20 +13,23 @@ export default function RootLayout() {
   const segments = useSegments();
 
   useEffect(() => {
-    // NOTE: push-notification registration (lib/push) is temporarily disabled —
-    // its native token-registration call was crashing the build. Re-enable once
-    // the expo-notifications native crash is isolated. Groups + the rest are
-    // unaffected.
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setReady(true);
+      if (session) registerForPush().catch(() => {});
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      if (session) registerForPush().catch(() => {});
     });
 
-    return () => subscription.unsubscribe();
+    // Tapping a push notification opens the in-app notifications feed.
+    const responseSub = Notifications.addNotificationResponseReceivedListener(() => {
+      router.push('/(tabs)/notifications');
+    });
+
+    return () => { subscription.unsubscribe(); responseSub.remove(); };
   }, []);
 
   useEffect(() => {
