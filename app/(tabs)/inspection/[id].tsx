@@ -1,4 +1,4 @@
-import { useEffect, useState, useLayoutEffect } from 'react';
+import { useEffect, useState, useLayoutEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
   ActivityIndicator, Alert, Image, Platform,
@@ -53,17 +53,23 @@ export default function InspectionDetailScreen() {
 
   const isComplete = status === 'complete';
 
+  // The Save button calls saveRef so it always runs the latest handler with
+  // fresh state. Only reconfigure the native header when its APPEARANCE changes
+  // (saving spinner / completed state) — NOT on every field or section change.
+  // Reconfiguring the native header on each section toggle was remounting a
+  // view controller and crashing Expo's orientation handler.
+  const saveRef = useRef<() => void>(() => {});
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: isComplete ? undefined : () => (
-        <TouchableOpacity onPress={() => handleSave()} style={{ paddingHorizontal: 8 }} disabled={saving}>
+        <TouchableOpacity onPress={() => saveRef.current()} style={{ paddingHorizontal: 8 }} disabled={saving}>
           {saving
             ? <ActivityIndicator size="small" color={colors.cream} />
             : <Text style={{ color: colors.cream, fontWeight: '700', fontSize: 15 }}>Save</Text>}
         </TouchableOpacity>
       ),
     });
-  }, [navigation, saving, isComplete, title, date, location, sections]);
+  }, [navigation, saving, isComplete]);
 
   const score       = calcScore(sections);
   const totalQ      = sections.filter(s => s.enabled).flatMap(s => s.questions).length;
@@ -146,6 +152,8 @@ export default function InspectionDetailScreen() {
       router.back();
     }
   };
+  // Keep the header's Save button pointed at the latest handler (fresh state).
+  saveRef.current = () => handleSave();
 
   if (loading) return <View style={st.center}><ActivityIndicator color={colors.greenMd} size="large" /></View>;
 
