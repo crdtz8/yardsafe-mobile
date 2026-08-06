@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { uploadImageBase64 } from '@/lib/storage';
 
 type Result = 'pass' | 'fail' | 'na';
 type ChkItem = { id: string; label: string; required: boolean; result: Result | null; note: string };
@@ -128,29 +129,25 @@ export default function EquipmentInspectionScreen() {
       { text: 'Take Photo', onPress: async () => {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== 'granted') return Alert.alert('Permission needed', 'Camera access is required.');
-        const res = await ImagePicker.launchCameraAsync({ mediaTypes: 'images' as any, quality: 0.7 });
-        if (!res.canceled && res.assets[0]) upload(res.assets[0].uri);
+        const res = await ImagePicker.launchCameraAsync({ mediaTypes: 'images' as any, quality: 0.7, base64: true });
+        if (!res.canceled && res.assets[0]?.base64) upload(res.assets[0].base64);
       }},
       { text: 'Choose from Library', onPress: async () => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') return Alert.alert('Permission needed', 'Photo library access is required.');
-        const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images' as any, quality: 0.7 });
-        if (!res.canceled && res.assets[0]) upload(res.assets[0].uri);
+        const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images' as any, quality: 0.7, base64: true });
+        if (!res.canceled && res.assets[0]?.base64) upload(res.assets[0].base64);
       }},
       { text: 'Cancel', style: 'cancel' },
     ]);
   };
 
-  const upload = async (uri: string) => {
+  const upload = async (base64: string) => {
     setUploading(true);
     try {
-      const ext  = (uri.split('.').pop() ?? 'jpg').split('?')[0];
       const rand = Math.random().toString(36).slice(-6);
-      const path = `equipment-inspections/${equipmentId}/${Date.now()}-${rand}.${ext}`;
-      const blob = await (await fetch(uri)).blob();
-      const { error } = await supabase.storage.from('inspection-photos').upload(path, blob, { contentType: `image/${ext}` });
-      if (error) throw error;
-      const { data: { publicUrl } } = supabase.storage.from('inspection-photos').getPublicUrl(path);
+      const path = `equipment-inspections/${equipmentId}/${Date.now()}-${rand}.jpg`;
+      const publicUrl = await uploadImageBase64('inspection-photos', path, base64);
       setPhotos(p => [...p, publicUrl]);
     } catch (e: any) {
       Alert.alert('Upload failed', e.message);

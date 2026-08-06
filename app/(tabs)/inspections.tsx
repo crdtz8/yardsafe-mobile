@@ -4,7 +4,7 @@ import {
   Modal, ScrollView, TextInput, TouchableOpacity, Alert, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, router } from 'expo-router';
+import { useNavigation, router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
@@ -17,15 +17,11 @@ type Inspection = {
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  draft: colors.muted, in_progress: '#F59E0B', completed: colors.greenMd, failed: colors.red,
+  draft: colors.muted, in_progress: '#F59E0B', complete: colors.greenMd, completed: colors.greenMd, failed: colors.red,
 };
 
-const STAT_OPTS = [
-  { label:'Draft', value:'draft' },
-  { label:'In Progress', value:'in_progress' },
-  { label:'Completed', value:'completed' },
-];
-
+// New inspections always start as a draft (the DB allows only 'draft'/'complete';
+// you complete it from the detail screen).
 const blankDraft = () => ({
   title: '', date: new Date().toISOString().split('T')[0], location: '', status: 'draft',
 });
@@ -65,6 +61,9 @@ export default function InspectionsScreen() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  // Refresh when returning from the detail screen so a just-completed inspection
+  // shows its updated status immediately.
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   // Load custom inspection templates (RLS returns global + own-company) when the
   // create sheet opens, so a new inspection can start from a company template.
@@ -149,7 +148,7 @@ export default function InspectionsScreen() {
               </TouchableOpacity>
               <Text style={f.hdrTitle}>New Inspection</Text>
               <TouchableOpacity onPress={handleSave} disabled={saving}>
-                <Text style={[f.save, saving && f.dim]}>{saving ? 'Saving…' : 'Save'}</Text>
+                <Text style={[f.save, saving && f.dim]}>{saving ? 'Starting…' : 'Start'}</Text>
               </TouchableOpacity>
             </View>
             <ScrollView style={f.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={f.sc}>
@@ -165,23 +164,6 @@ export default function InspectionsScreen() {
               <Text style={f.lbl}>LOCATION / AREA</Text>
               <TextInput style={f.inp} value={draft.location} onChangeText={set('location')}
                 placeholder="e.g. Main Yard, Processing Area" placeholderTextColor={colors.muted} />
-
-              <Text style={f.lbl}>STATUS</Text>
-              <TouchableOpacity style={f.sel} onPress={() => setPickField(p => p === 'stat' ? null : 'stat')}>
-                <Text style={f.selVal}>{labelFor(STAT_OPTS, draft.status)}</Text>
-                <Ionicons name={pickField === 'stat' ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
-              </TouchableOpacity>
-              {pickField === 'stat' && (
-                <View style={f.opts}>
-                  {STAT_OPTS.map((o, i) => (
-                    <TouchableOpacity key={o.value} style={[f.opt, i === STAT_OPTS.length - 1 && f.optLast]}
-                      onPress={() => { set('status')(o.value); setPickField(null); }}>
-                      <Text style={f.optTxt}>{o.label}</Text>
-                      {draft.status === o.value && <Ionicons name="checkmark" size={16} color={colors.greenMd} />}
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
 
               <Text style={f.lbl}>CHECKLIST TEMPLATE</Text>
               <TouchableOpacity style={f.sel} onPress={() => setPickField(p => p === 'tpl' ? null : 'tpl')}>
