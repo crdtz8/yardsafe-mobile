@@ -8,6 +8,7 @@ import { useNavigation, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { templateToSections, defaultSections } from '@/constants/inspectionSections';
 
 type Inspection = {
   id: string; title: string | null; date: string | null;
@@ -87,9 +88,10 @@ export default function InspectionsScreen() {
       status:       draft.status,
       inspector_id: user!.id,
       company_id:   prof?.company_id,
-      // Bake the chosen template's checklist into the inspection; null → the
-      // detail screen falls back to the built-in default sections.
-      sections:     chosen?.sections ?? null,
+      // Bake the checklist into the inspection as answer-shape sections (never
+      // null — the column is NOT NULL). A chosen template's definition-shape
+      // sections are converted; otherwise the built-in default checklist is used.
+      sections:     chosen ? templateToSections(chosen.sections) : defaultSections(),
     }).select('id').single();
     setSaving(false);
     if (error) return Alert.alert('Error', error.message);

@@ -8,66 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
-
-type QResult = 'pass' | 'fail' | 'na' | null;
-type IQuestion = { id: string; text: string; result: QResult; note: string; photos: string[] };
-type ISection  = { id: string; name: string; enabled: boolean; notes: string; photos: string[]; questions: IQuestion[] };
-
-const DEFAULTS: ISection[] = [
-  {
-    id: 's1', name: 'General Site Conditions', enabled: true, notes: '', photos: [],
-    questions: [
-      { id: 's1_q0', text: 'Walkways and aisles are clear and properly marked', result: null, note: '', photos: [] },
-      { id: 's1_q1', text: 'Adequate lighting in all work areas', result: null, note: '', photos: [] },
-      { id: 's1_q2', text: 'Safety signage is posted and visible', result: null, note: '', photos: [] },
-      { id: 's1_q3', text: 'Housekeeping standards are maintained', result: null, note: '', photos: [] },
-    ],
-  },
-  {
-    id: 's2', name: 'Personal Protective Equipment', enabled: true, notes: '', photos: [],
-    questions: [
-      { id: 's2_q0', text: 'Required PPE is available and in good condition', result: null, note: '', photos: [] },
-      { id: 's2_q1', text: 'Employees are wearing appropriate PPE for their tasks', result: null, note: '', photos: [] },
-      { id: 's2_q2', text: 'PPE storage areas are organized and accessible', result: null, note: '', photos: [] },
-    ],
-  },
-  {
-    id: 's3', name: 'Equipment & Machinery', enabled: true, notes: '', photos: [],
-    questions: [
-      { id: 's3_q0', text: 'Equipment is in good working condition', result: null, note: '', photos: [] },
-      { id: 's3_q1', text: 'Guards and safety devices are in place and functional', result: null, note: '', photos: [] },
-      { id: 's3_q2', text: 'Pre-operation inspections are being completed', result: null, note: '', photos: [] },
-      { id: 's3_q3', text: 'No unauthorized modifications to equipment', result: null, note: '', photos: [] },
-    ],
-  },
-  {
-    id: 's4', name: 'Fire Prevention', enabled: true, notes: '', photos: [],
-    questions: [
-      { id: 's4_q0', text: 'Fire extinguishers are accessible, charged, and not expired', result: null, note: '', photos: [] },
-      { id: 's4_q1', text: 'Emergency exits are clear and properly marked', result: null, note: '', photos: [] },
-      { id: 's4_q2', text: 'Electrical panels are unobstructed (36" clearance)', result: null, note: '', photos: [] },
-      { id: 's4_q3', text: 'No combustible materials stored near heat sources', result: null, note: '', photos: [] },
-    ],
-  },
-  {
-    id: 's5', name: 'Material Handling & Storage', enabled: true, notes: '', photos: [],
-    questions: [
-      { id: 's5_q0', text: 'Scrap piles are within safe height limits and stable', result: null, note: '', photos: [] },
-      { id: 's5_q1', text: 'No overhead hazards from unstable materials', result: null, note: '', photos: [] },
-      { id: 's5_q2', text: 'Crushing and shearing zones are properly guarded', result: null, note: '', photos: [] },
-      { id: 's5_q3', text: 'Vehicle traffic routes are clearly marked', result: null, note: '', photos: [] },
-    ],
-  },
-  {
-    id: 's6', name: 'Environmental Compliance', enabled: false, notes: '', photos: [],
-    questions: [
-      { id: 's6_q0', text: 'Spill containment equipment is in place', result: null, note: '', photos: [] },
-      { id: 's6_q1', text: 'Fluids and hazardous materials are properly stored', result: null, note: '', photos: [] },
-      { id: 's6_q2', text: 'No visible oil or fuel leaks on ground', result: null, note: '', photos: [] },
-      { id: 's6_q3', text: 'Waste disposal procedures are being followed', result: null, note: '', photos: [] },
-    ],
-  },
-];
+import type { QResult, IQuestion, ISection } from '@/constants/inspectionSections';
+import { defaultSections } from '@/constants/inspectionSections';
 
 function calcScore(sections: ISection[]): number | null {
   const qs = sections.filter(s => s.enabled).flatMap(s => s.questions);
@@ -103,7 +45,7 @@ export default function InspectionDetailScreen() {
         setLocation(data.location ?? '');
         setStatus((data.status ?? 'draft') as 'draft' | 'complete');
         const secs = data.sections;
-        setSections(Array.isArray(secs) && secs.length > 0 ? (secs as ISection[]) : DEFAULTS);
+        setSections(Array.isArray(secs) && secs.length > 0 ? (secs as ISection[]) : defaultSections());
       }
       setLoading(false);
     })();
