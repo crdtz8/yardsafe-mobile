@@ -13,7 +13,10 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.yardsafe.app",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.yardsafe.app",
@@ -22,6 +25,9 @@
         "backgroundColor": "#2A3226"
       },
       "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "permissions": [
         "android.permission.RECORD_AUDIO"
       ]
     },
@@ -32,6 +38,7 @@
       "expo-font",
       "expo-web-browser",
       "expo-video",
+      "expo-notifications",
       [
         "expo-image-picker",
         {
