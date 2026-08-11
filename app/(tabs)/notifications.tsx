@@ -21,12 +21,10 @@ type NotifType =
 type NotifRow = {
   id: string;
   recipient_id: string;
-  subject: string | null;
-  body: string | null;
+  message: string | null;
   type: string | null;
   sent_at: string | null;
   read: boolean | null;
-  created_at: string;
 };
 
 type DateGroup = {
@@ -67,7 +65,7 @@ const groupByDate = (items: NotifRow[]): DateGroup[] => {
   };
 
   for (const item of items) {
-    const ts = startOfDay(new Date(item.created_at));
+    const ts = startOfDay(new Date(item.sent_at ?? 0));
     if (ts >= todayStart) {
       groups['Today'].push(item);
     } else if (ts >= yesterdayStart) {
@@ -115,7 +113,7 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 const getLabel = (item: NotifRow): string =>
-  item.subject || TYPE_LABEL[item.type ?? 'system'] || 'Notification';
+  item.message || TYPE_LABEL[item.type ?? 'system'] || 'Notification';
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
@@ -155,9 +153,9 @@ export default function NotificationsScreen() {
 
       const { data, error } = await supabase
         .from('notification_log')
-        .select('id, recipient_id, type, subject, body, sent_at, read, created_at')
+        .select('id, recipient_id, type, message, sent_at, read')
         .eq('recipient_id', user.id)
-        .order('created_at', { ascending: false })
+        .order('sent_at', { ascending: false })
         .limit(100);
 
       if (error) throw error;
@@ -283,7 +281,7 @@ export default function NotificationsScreen() {
                   <Text style={[s.subject, isUnread && s.subjectUnread]} numberOfLines={isExpanded ? undefined : 2}>
                     {getLabel(item)}
                   </Text>
-                  <Text style={s.time}>{relTime(item.sent_at ?? item.created_at)}</Text>
+                  <Text style={s.time}>{relTime(item.sent_at ?? '')}</Text>
                 </View>
 
                 {/* Right side */}
@@ -296,11 +294,7 @@ export default function NotificationsScreen() {
               {/* Expanded detail */}
               {isExpanded && (
                 <View style={s.detail}>
-                  {item.body ? (
-                    <Text style={s.detailBody}>{item.body}</Text>
-                  ) : (
-                    <Text style={[s.detailBody, { color: colors.muted, fontStyle: 'italic' }]}>No additional details.</Text>
-                  )}
+                  <Text style={s.detailBody}>{item.message || 'No additional details.'}</Text>
                   <View style={s.detailActions}>
                     {isUnread && (
                       <TouchableOpacity style={s.actionBtn} onPress={() => markRead(item.id)}>
