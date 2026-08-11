@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 import { getProfile, getCompany, signOut } from '@/lib/auth';
+import NotificationPermissionBanner from '@/components/NotificationPermissionBanner';
 
 type Profile = { name: string; role: string; company_id: string };
 
@@ -257,6 +258,9 @@ export default function DashboardScreen() {
             </Text>
           )}
         </View>
+
+        {/* Nudge to enable push if it's off (hidden once granted) */}
+        <NotificationPermissionBanner />
 
         {/* Tile list */}
         <View style={styles.list}>
