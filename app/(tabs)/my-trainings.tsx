@@ -106,9 +106,11 @@ export default function MyTrainingsScreen() {
           onPress: async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
+            // company_id is required (NOT NULL + RLS check), so supply it.
+            const { data: prof } = await supabase.from('profiles').select('company_id').eq('id', user.id).single();
             const { error } = await supabase
               .from('training_completions')
-              .insert({ training_id: item.training_id, user_id: user.id, completed_at: new Date().toISOString() });
+              .upsert({ training_id: item.training_id, user_id: user.id, company_id: prof?.company_id, completed_at: new Date().toISOString() }, { onConflict: 'training_id,user_id' });
             if (error) { Alert.alert('Error', error.message); return; }
             load();
           },

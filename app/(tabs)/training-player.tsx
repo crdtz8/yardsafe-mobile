@@ -109,9 +109,13 @@ export default function TrainingPlayerScreen() {
   const recordCompletion = async (pct: number | null, quizAnswers: Record<string, string | null> | null, sig: string | null) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user || !id) return { error: 'Not signed in' };
+    // company_id is NOT NULL and gated by RLS (company_id = get_my_company_id()),
+    // so it must be supplied or the insert is rejected.
+    const { data: prof } = await supabase.from('profiles').select('company_id').eq('id', user.id).single();
     const { error } = await supabase.from('training_completions').upsert({
       training_id:   id,
       user_id:       user.id,
+      company_id:    prof?.company_id,
       completed_at:  new Date().toISOString(),
       score:         pct,
       attempts:      attempts + 1,
@@ -214,7 +218,7 @@ export default function TrainingPlayerScreen() {
             <Text style={s.quizHeaderTitle}>Knowledge Check</Text>
             <Text style={s.quizHeaderSub}>
               {questions.length} question{questions.length !== 1 ? 's' : ''} · {passPct}% to pass
-              {attempts > 0 ? ` · Attempt ${attempts + 1} of ${maxAttempts}` : ''}
+              {attempts > 0 ? ` · Attempt ${Math.min(attempts + 1, maxAttempts)} of ${maxAttempts}` : ''}
             </Text>
           </View>
         </View>
