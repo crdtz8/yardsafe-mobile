@@ -125,14 +125,6 @@ const TILES: TileDef[] = [
     },
   },
   {
-    id: 'environmental', label: 'ENVIRONMENTAL', icon: 'leaf-outline', unit: 'items', route: '/(tabs)/environmental',
-    roles: ['admin', 'safety_manager', 'manager'],
-    count: async (cid) => {
-      const { count } = await supabase.from('compliance_items').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('is_active', true);
-      return count ?? 0;
-    },
-  },
-  {
     id: 'notifications', label: 'NOTIFICATIONS', icon: 'notifications-outline', unit: 'unread', route: '/(tabs)/notifications',
     roles: ['admin', 'safety_manager', 'manager', 'employee'],
     count: async (_cid, uid) => {
