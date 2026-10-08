@@ -324,25 +324,35 @@ export default function TrainingPlayerScreen() {
 }
 
 // Separate component so useVideoPlayer is always called with a defined URI.
-// Native controls + fullscreen are on so the viewer can play/pause and maximize,
-// but requiresLinearPlayback disables the scrubber so the video can't be skipped.
-// The continue-gate counts ACTUAL playback time as a belt-and-suspenders check.
+// Native controls + fullscreen are on. The scrubber is enabled so viewers can
+// rewind to re-watch something they missed, but the timeUpdate guard snaps any
+// forward skip back to the furthest point actually watched — so people still
+// can't jump ahead. The continue-gate counts ACTUAL playback time to unlock.
 function VideoBlock({ uri, onWatchedEnough }: { uri: string; onWatchedEnough: () => void }) {
-  const player = useVideoPlayer(uri, p => { p.loop = false; p.timeUpdateEventInterval = 1; });
-  const done     = useRef(false);
-  const watched  = useRef(0); // accumulated seconds actually played
-  const lastTime = useRef(0);
+  const player = useVideoPlayer(uri, p => { p.loop = false; p.timeUpdateEventInterval = 0.3; });
+  const done       = useRef(false);
+  const watched    = useRef(0); // accumulated seconds actually played
+  const lastTime   = useRef(0);
+  const maxWatched = useRef(0); // furthest point reached — the seek-forward ceiling
 
   useEffect(() => {
     player.play();
     const markDone = () => { if (!done.current) { done.current = true; onWatchedEnough(); } };
     const s1 = player.addListener('timeUpdate', ({ currentTime }) => {
-      const dur   = player.duration || 0;
+      const dur = player.duration || 0;
+      // Allow rewinding, but block skipping ahead: if they seek past the furthest
+      // point actually watched, snap back to it.
+      if (currentTime > maxWatched.current + 1.2) {
+        player.currentTime = maxWatched.current;
+        lastTime.current = maxWatched.current;
+        return;
+      }
+      if (currentTime > maxWatched.current) maxWatched.current = currentTime;
+      // Completion gate: count only real playback ticks; ignore rewinds so
+      // re-watching can't satisfy the gate.
       const delta = currentTime - lastTime.current;
       lastTime.current = currentTime;
-      // Count only real playback ticks (~1s); ignore scrub jumps and rewinds so
-      // seeking to the end can't satisfy the gate.
-      if (delta > 0 && delta <= 2) watched.current += delta;
+      if (delta > 0 && delta <= 1.5) watched.current += delta;
       if (dur > 0 && watched.current >= dur * 0.9) markDone();
     });
     const s2 = player.addListener('playToEnd', () => markDone());
@@ -356,7 +366,6 @@ function VideoBlock({ uri, onWatchedEnough }: { uri: string; onWatchedEnough: ()
         style={s.video}
         nativeControls
         allowsFullscreen
-        requiresLinearPlayback
         allowsPictureInPicture={false}
         contentFit="contain"
       />
