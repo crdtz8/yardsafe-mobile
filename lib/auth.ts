@@ -22,7 +22,7 @@ export async function getProfile(userId: string) {
 export async function getCompany(companyId: string) {
   const { data, error } = await supabase
     .from('companies')
-    .select('id, name, plan, status, trial_ends_at')
+    .select('id, name, plan, status, trial_ends_at, enabled_modules')
     .eq('id', companyId)
     .single();
   return { company: data, error };

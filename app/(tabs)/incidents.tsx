@@ -120,6 +120,40 @@ const blankDraft = () => ({
 
 type Draft = ReturnType<typeof blankDraft>;
 
+// ── Custom form sections (admin-configured on web; filled here) ──────────────────
+// Mirrors the web incident_form_config shape so a snapshot saved here renders
+// identically on the web and vice-versa.
+
+const SIF_SECTION = {
+  id: 'sif_builtin',
+  name: 'SIF / PSIF Potential',
+  builtin: true,
+  fields: [
+    { id: 'sif_potential', label: 'Did this incident have Serious Injury or Fatality (SIF) potential?', type: 'yesno' },
+    { id: 'sif_class',     label: 'Classification', type: 'select', options: ['Not a SIF', 'PSIF — Potential SIF', 'SIF — Actual serious injury/fatality'] },
+    { id: 'sif_hazard',    label: 'Which life-threatening hazard was involved?', type: 'text' },
+    { id: 'sif_controls',  label: 'Were direct controls in place and working at the time?', type: 'yesno' },
+    { id: 'sif_notes',     label: 'SIF / PSIF notes', type: 'text' },
+  ],
+};
+
+function effectiveTemplate(config: any): any[] {
+  const sections = Array.isArray(config?.sections) ? config.sections : [];
+  return config?.sif_enabled ? [...sections, SIF_SECTION] : sections;
+}
+
+// Turn a template (section/field definitions) into a blank filled snapshot.
+function blankSnapshot(tpl: any[]): any[] {
+  return (tpl || []).map(s => ({
+    id: s.id, name: s.name, builtin: !!s.builtin,
+    fields: (s.fields || []).map((fl: any) => ({
+      id: fl.id, label: fl.label, type: fl.type,
+      options: fl.options || undefined, required: !!fl.required,
+      value: fl.type === 'photo' ? [] : '',
+    })),
+  }));
+}
+
 // ── Main Screen ────────────────────────────────────────────────────────────────
 
 export default function IncidentsScreen() {
@@ -135,6 +169,8 @@ export default function IncidentsScreen() {
   const [employees,   setEmployees]   = useState<Employee[]>([]);
   const [photos,      setPhotos]      = useState<Photo[]>([]);
   const [uploading,   setUploading]   = useState(false);
+  const [formConfig,  setFormConfig]  = useState<any>(null);
+  const [customSections, setCustomSections] = useState<any[]>([]);
 
   const showModal  = showCreate || editItem !== null;
   const isInjury   = draft.incident_type === 'injury' || draft.incident_type === 'illness';
@@ -142,7 +178,71 @@ export default function IncidentsScreen() {
   const set = (key: keyof Draft) => (val: any) => setDraft(d => ({ ...d, [key]: val }));
 
   const closeModal = () => {
-    setShowCreate(false); setEditItem(null); setPickField(null); setPhotos([]);
+    setShowCreate(false); setEditItem(null); setPickField(null); setPhotos([]); setCustomSections([]);
+  };
+
+  // Load the company's custom incident form definition once.
+  useEffect(() => {
+    supabase.from('incident_form_config').select('*').limit(1).maybeSingle()
+      .then(({ data }) => setFormConfig(data || null));
+  }, []);
+
+  // ── Custom-section field helpers ────────────────────────────────────────────
+
+  const setCustomValue = (si: number, fi: number, value: any) =>
+    setCustomSections(prev => {
+      const next = prev.map((s: any) => ({ ...s, fields: s.fields.map((fl: any) => ({ ...fl })) }));
+      next[si].fields[fi].value = value;
+      return next;
+    });
+
+  const addCustomPhoto = (si: number, fi: number) => {
+    Alert.alert('Add Photo', undefined, [
+      {
+        text: 'Take Photo', onPress: async () => {
+          const { status } = await ImagePicker.requestCameraPermissionsAsync();
+          if (status !== 'granted') return Alert.alert('Permission Required', 'Camera access is needed.');
+          const res = await ImagePicker.launchCameraAsync({ mediaTypes: 'images' as any, quality: 0.75, base64: true });
+          if (!res.canceled && res.assets[0]?.base64) uploadCustomPhoto(si, fi, res.assets[0].base64);
+        },
+      },
+      {
+        text: 'Choose from Library', onPress: async () => {
+          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (status !== 'granted') return Alert.alert('Permission Required', 'Photo library access is needed.');
+          const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images' as any, quality: 0.75, base64: true });
+          if (!res.canceled && res.assets[0]?.base64) uploadCustomPhoto(si, fi, res.assets[0].base64);
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const uploadCustomPhoto = async (si: number, fi: number, base64: string) => {
+    setUploading(true);
+    try {
+      const rand = Math.random().toString(36).slice(-6);
+      const path = `incidents/custom/${Date.now()}-${rand}.jpg`;
+      const url = await uploadImageBase64('incident-photos', path, base64);
+      setCustomSections(prev => {
+        const next = prev.map((s: any) => ({ ...s, fields: s.fields.map((fl: any) => ({ ...fl })) }));
+        const cur = Array.isArray(next[si].fields[fi].value) ? next[si].fields[fi].value : [];
+        next[si].fields[fi].value = [...cur, { url, path }];
+        return next;
+      });
+    } catch (e: any) {
+      Alert.alert('Upload Failed', e.message);
+    }
+    setUploading(false);
+  };
+
+  const removeCustomPhoto = (si: number, fi: number, path: string) => {
+    setCustomSections(prev => {
+      const next = prev.map((s: any) => ({ ...s, fields: s.fields.map((fl: any) => ({ ...fl })) }));
+      next[si].fields[fi].value = (next[si].fields[fi].value || []).filter((p: Photo) => p.path !== path);
+      return next;
+    });
+    supabase.storage.from('incident-photos').remove([path]);
   };
 
   // ── Load employees when modal opens ────────────────────────────────────────
@@ -172,14 +272,18 @@ export default function IncidentsScreen() {
     navigation.setOptions({
       headerRight: () => (
         <TouchableOpacity
-          onPress={() => { setDraft(blankDraft()); setPickField(null); setPhotos([]); setShowCreate(true); }}
+          onPress={() => {
+            setDraft(blankDraft()); setPickField(null); setPhotos([]);
+            setCustomSections(blankSnapshot(effectiveTemplate(formConfig)));
+            setShowCreate(true);
+          }}
           style={{ paddingHorizontal: 8 }}
         >
           <Ionicons name="add" size={26} color={colors.cream} />
         </TouchableOpacity>
       ),
     });
-  }, [navigation]);
+  }, [navigation, formConfig]);
 
   // ── Data load ──────────────────────────────────────────────────────────────
 
@@ -195,8 +299,16 @@ export default function IncidentsScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  const openEdit = (item: Incident) => {
-    const full: any = item;
+  const openEdit = async (item: Incident) => {
+    // Pull the full row so every field (and the custom-section snapshot) is present.
+    const { data } = await supabase.from('incidents').select('*').eq('id', item.id).single();
+    const full: any = data || item;
+    const tpl = effectiveTemplate(formConfig);
+    setCustomSections(
+      Array.isArray(full.custom_sections) && full.custom_sections.length
+        ? full.custom_sections
+        : blankSnapshot(tpl)
+    );
     setDraft({
       title:               full.title               ?? '',
       incident_date:       full.incident_date        ?? today(),
@@ -269,6 +381,16 @@ export default function IncidentsScreen() {
   const handleSave = async () => {
     if (!draft.title.trim())   return Alert.alert('Required', 'Enter an incident title.');
     if (!draft.incident_type)  return Alert.alert('Required', 'Select an incident type.');
+    // Required custom fields
+    for (const sec of customSections) {
+      for (const fld of sec.fields) {
+        if (!fld.required) continue;
+        const empty = fld.type === 'photo'
+          ? !(Array.isArray(fld.value) && fld.value.length)
+          : !String(fld.value ?? '').trim();
+        if (empty) return Alert.alert('Required', `"${fld.label}" is required.`);
+      }
+    }
     setSaving(true);
 
     const payload: Record<string, any> = {
@@ -292,6 +414,10 @@ export default function IncidentsScreen() {
       root_cause:          draft.root_cause || null,
       immediate_action:    draft.immediate_action || null,
     };
+
+    // Only attach custom_sections when there's real custom content, so the column
+    // is never referenced on a backend that predates migration 067.
+    if (customSections.length) payload.custom_sections = customSections;
 
     let incidentId = editItem?.id;
 
@@ -559,6 +685,83 @@ export default function IncidentsScreen() {
                 placeholder="What was done right away?" placeholderTextColor={colors.muted}
                 multiline numberOfLines={3} textAlignVertical="top" />
 
+              {/* ─ CUSTOM SECTIONS (admin-configured) ─ */}
+              {customSections.map((sec: any, si: number) => (
+                <View key={sec.id ?? si}>
+                  <Text style={[f.sectionHdr, { marginTop: 28 }]}>{(sec.name || 'Additional').toUpperCase()}</Text>
+                  {sec.fields.map((fld: any, fi: number) => {
+                    const pfKey = `cs:${si}:${fi}`;
+                    const open = pickField === pfKey;
+                    return (
+                      <View key={fld.id ?? fi}>
+                        <Text style={f.lbl}>{(fld.label || '').toUpperCase()}{fld.required ? ' *' : ''}</Text>
+
+                        {fld.type === 'text' && (
+                          <TextInput style={f.inp} value={String(fld.value ?? '')}
+                            onChangeText={(v) => setCustomValue(si, fi, v)}
+                            placeholder="Enter a response" placeholderTextColor={colors.muted} />
+                        )}
+
+                        {fld.type === 'select' && (
+                          <>
+                            <TouchableOpacity style={f.sel} onPress={() => setPickField(open ? null : pfKey)}>
+                              <Text style={fld.value ? f.selVal : f.selPh}>{fld.value || 'Select…'}</Text>
+                              <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
+                            </TouchableOpacity>
+                            {open && (
+                              <View style={f.opts}>
+                                {(fld.options || []).map((opt: string, oi: number) => (
+                                  <TouchableOpacity key={opt} style={[f.opt, oi === (fld.options.length - 1) && f.optLast]}
+                                    onPress={() => { setCustomValue(si, fi, opt); setPickField(null); }}>
+                                    <Text style={f.optTxt}>{opt}</Text>
+                                    {fld.value === opt && <Ionicons name="checkmark" size={16} color={colors.greenMd} />}
+                                  </TouchableOpacity>
+                                ))}
+                              </View>
+                            )}
+                          </>
+                        )}
+
+                        {fld.type === 'yesno' && (
+                          <View style={f.yesno}>
+                            {['Yes', 'No'].map(opt => {
+                              const on = fld.value === opt;
+                              return (
+                                <TouchableOpacity key={opt} style={[f.yesnoBtn, on && f.yesnoOn]}
+                                  onPress={() => setCustomValue(si, fi, on ? '' : opt)}>
+                                  <Text style={[f.yesnoTxt, on && f.yesnoTxtOn]}>{opt}</Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        )}
+
+                        {fld.type === 'photo' && (
+                          <>
+                            {Array.isArray(fld.value) && fld.value.length > 0 && (
+                              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10, marginTop: 6 }}>
+                                {fld.value.map((ph: Photo) => (
+                                  <View key={ph.path} style={f.thumbWrap}>
+                                    <Image source={{ uri: ph.url }} style={f.thumb} resizeMode="cover" />
+                                    <TouchableOpacity style={f.thumbRemove} onPress={() => removeCustomPhoto(si, fi, ph.path)}>
+                                      <Ionicons name="close-circle" size={20} color="#fff" />
+                                    </TouchableOpacity>
+                                  </View>
+                                ))}
+                              </ScrollView>
+                            )}
+                            <TouchableOpacity style={[f.photoBtn, { marginTop: 6 }]} onPress={() => addCustomPhoto(si, fi)} disabled={uploading}>
+                              <Ionicons name="camera-outline" size={20} color={colors.greenMd} style={{ marginRight: 8 }} />
+                              <Text style={f.photoBtnTxt}>Add Photo</Text>
+                            </TouchableOpacity>
+                          </>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
+
               {/* ─ PHOTOS ─ */}
               <Text style={[f.sectionHdr, { marginTop: 28 }]}>PHOTOS</Text>
 
@@ -649,6 +852,12 @@ const f = StyleSheet.create({
   thumbWrap:   { position: 'relative', marginRight: 8 },
   thumb:       { width: 90, height: 70, borderRadius: 6 },
   thumbRemove: { position: 'absolute', top: -6, right: -6, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 10 },
+
+  yesno:       { flexDirection: 'row', gap: 10 },
+  yesnoBtn:    { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  yesnoOn:     { backgroundColor: colors.greenMd, borderColor: colors.greenMd },
+  yesnoTxt:    { fontSize: 15, fontWeight: '600', color: colors.muted },
+  yesnoTxtOn:  { color: colors.cream },
 
   deleteBtn:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 32, paddingVertical: 14, borderRadius: 8, borderWidth: 1, borderColor: colors.red + '55', backgroundColor: colors.red + '11' },
   deleteTxt:  { fontSize: 15, fontWeight: '600', color: colors.red },

@@ -43,6 +43,8 @@ export default function AppLayout() {
       <Stack.Screen name="my-history"       options={{ title: 'My History' }} />
       <Stack.Screen name="inspection/[id]"  options={{ title: 'Inspection' }} />
       <Stack.Screen name="permits"          options={{ title: 'Safety Permits' }} />
+      <Stack.Screen name="tools"            options={{ title: 'Specialty Tools' }} />
+      <Stack.Screen name="regulatory-tasks" options={{ title: 'Regulatory Tasks' }} />
       <Stack.Screen name="notifications"   options={{ title: 'Notifications' }} />
       <Stack.Screen name="profile"         options={{ title: 'My Profile' }} />
       <Stack.Screen name="training-player" options={{ title: 'Training',          headerBackTitle: 'Back' }} />

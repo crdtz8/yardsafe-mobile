@@ -17,6 +17,7 @@ type TileDef = {
   unit:  string;
   route: string;
   roles: string[];
+  module?: string;   // when set, tile shows only if company.enabled_modules includes it
   count: (companyId: string, userId: string) => Promise<number>;
 };
 
@@ -125,6 +126,23 @@ const TILES: TileDef[] = [
     },
   },
   {
+    id: 'regulatory', label: 'REGULATORY TASKS', icon: 'calendar-outline', unit: 'tasks', route: '/(tabs)/regulatory-tasks',
+    roles: ['admin', 'safety_manager', 'manager'],
+    count: async (cid) => {
+      const { count } = await supabase.from('compliance_items').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('is_active', true);
+      return count ?? 0;
+    },
+  },
+  // ── Per-company module tiles (gated by companies.enabled_modules) ────────────
+  {
+    id: 'tools', label: 'SPECIALTY TOOLS', icon: 'build-outline', unit: 'tools', route: '/(tabs)/tools',
+    roles: ['admin', 'safety_manager', 'manager', 'employee'], module: 'tools',
+    count: async (cid) => {
+      const { count } = await supabase.from('tools').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('is_active', true);
+      return count ?? 0;
+    },
+  },
+  {
     id: 'notifications', label: 'NOTIFICATIONS', icon: 'notifications-outline', unit: 'unread', route: '/(tabs)/notifications',
     roles: ['admin', 'safety_manager', 'manager', 'employee'],
     count: async (_cid, uid) => {
@@ -139,6 +157,7 @@ export default function DashboardScreen() {
   const [profile,    setProfile]    = useState<Profile | null>(null);
   const [company,    setCompany]    = useState<{ name: string } | null>(null);
   const [counts,     setCounts]     = useState<Record<string, number>>({});
+  const [modules,    setModules]    = useState<string[]>([]);
   const [empCount,   setEmpCount]   = useState(0);
   const [overdue,    setOverdue]    = useState(0);
   const [loading,    setLoading]    = useState(true);
@@ -157,6 +176,8 @@ export default function DashboardScreen() {
 
     const cid = profile.company_id;
     const role = profile.role;
+    const mods: string[] = (company as any)?.enabled_modules ?? [];
+    setModules(mods);
 
     // Employee count for header
     const { count: ec } = await supabase
@@ -187,7 +208,7 @@ export default function DashboardScreen() {
     }
 
     // Tile counts (only for visible tiles)
-    const visible = TILES.filter(t => t.roles.includes(role));
+    const visible = TILES.filter(t => t.roles.includes(role) && (!t.module || mods.includes(t.module)));
     const results = await Promise.all(
       visible.map(async (t) => {
         const n = await t.count(cid, user.id).catch(() => 0);
@@ -204,7 +225,7 @@ export default function DashboardScreen() {
   const onRefresh = () => { setRefreshing(true); load(); };
 
   const role = profile?.role ?? 'employee';
-  const visibleTiles = TILES.filter(t => t.roles.includes(role));
+  const visibleTiles = TILES.filter(t => t.roles.includes(role) && (!t.module || modules.includes(t.module)));
 
   const handleSignOut = () =>
     Alert.alert('Sign out', 'Are you sure?', [
