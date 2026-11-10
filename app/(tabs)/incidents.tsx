@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
+import { promptForPhoto } from '@/lib/photos';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
@@ -196,27 +196,8 @@ export default function IncidentsScreen() {
       return next;
     });
 
-  const addCustomPhoto = (si: number, fi: number) => {
-    Alert.alert('Add Photo', undefined, [
-      {
-        text: 'Take Photo', onPress: async () => {
-          const { status } = await ImagePicker.requestCameraPermissionsAsync();
-          if (status !== 'granted') return Alert.alert('Permission Required', 'Camera access is needed.');
-          const res = await ImagePicker.launchCameraAsync({ mediaTypes: 'images' as any, quality: 0.75, base64: true });
-          if (!res.canceled && res.assets[0]?.base64) uploadCustomPhoto(si, fi, res.assets[0].base64);
-        },
-      },
-      {
-        text: 'Choose from Library', onPress: async () => {
-          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-          if (status !== 'granted') return Alert.alert('Permission Required', 'Photo library access is needed.');
-          const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images' as any, quality: 0.75, base64: true });
-          if (!res.canceled && res.assets[0]?.base64) uploadCustomPhoto(si, fi, res.assets[0].base64);
-        },
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
+  const addCustomPhoto = (si: number, fi: number) =>
+    promptForPhoto(base64 => uploadCustomPhoto(si, fi, base64), { onBusy: setUploading });
 
   const uploadCustomPhoto = async (si: number, fi: number, base64: string) => {
     setUploading(true);
@@ -336,27 +317,7 @@ export default function IncidentsScreen() {
 
   // ── Photo upload ───────────────────────────────────────────────────────────
 
-  const addPhoto = () => {
-    Alert.alert('Add Photo', undefined, [
-      {
-        text: 'Take Photo', onPress: async () => {
-          const { status } = await ImagePicker.requestCameraPermissionsAsync();
-          if (status !== 'granted') return Alert.alert('Permission Required', 'Camera access is needed.');
-          const res = await ImagePicker.launchCameraAsync({ mediaTypes: 'images' as any, quality: 0.75, base64: true });
-          if (!res.canceled && res.assets[0]?.base64) uploadPhoto(res.assets[0].base64);
-        },
-      },
-      {
-        text: 'Choose from Library', onPress: async () => {
-          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-          if (status !== 'granted') return Alert.alert('Permission Required', 'Photo library access is needed.');
-          const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images' as any, quality: 0.75, base64: true });
-          if (!res.canceled && res.assets[0]?.base64) uploadPhoto(res.assets[0].base64);
-        },
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
+  const addPhoto = () => promptForPhoto(uploadPhoto, { onBusy: setUploading });
 
   const uploadPhoto = async (base64: string) => {
     setUploading(true);

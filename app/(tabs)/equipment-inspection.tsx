@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useNavigation, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
+import { promptForPhoto } from '@/lib/photos';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 import { uploadImageBase64 } from '@/lib/storage';
@@ -124,23 +124,7 @@ export default function EquipmentInspectionScreen() {
   const setNote = (id: string, note: string) =>
     setItems(prev => prev.map(i => i.id === id ? { ...i, note } : i));
 
-  const addPhoto = () => {
-    Alert.alert('Add Photo', undefined, [
-      { text: 'Take Photo', onPress: async () => {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== 'granted') return Alert.alert('Permission needed', 'Camera access is required.');
-        const res = await ImagePicker.launchCameraAsync({ mediaTypes: 'images' as any, quality: 0.7, base64: true });
-        if (!res.canceled && res.assets[0]?.base64) upload(res.assets[0].base64);
-      }},
-      { text: 'Choose from Library', onPress: async () => {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') return Alert.alert('Permission needed', 'Photo library access is required.');
-        const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images' as any, quality: 0.7, base64: true });
-        if (!res.canceled && res.assets[0]?.base64) upload(res.assets[0].base64);
-      }},
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
+  const addPhoto = () => promptForPhoto(upload, { onBusy: setUploading });
 
   const upload = async (base64: string) => {
     setUploading(true);

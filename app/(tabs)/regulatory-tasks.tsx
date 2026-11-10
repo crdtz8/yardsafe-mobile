@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
+import { promptForPhoto } from '@/lib/photos';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
@@ -279,27 +279,7 @@ function CompleteModal({ item, myId, onClose, onDone }: {
 
   const nextDue = nextDueDate(item.frequency, date);
 
-  const addPhoto = () => {
-    Alert.alert('Add Attachment', undefined, [
-      {
-        text: 'Take Photo', onPress: async () => {
-          const { status } = await ImagePicker.requestCameraPermissionsAsync();
-          if (status !== 'granted') return Alert.alert('Permission Required', 'Camera access is needed.');
-          const res = await ImagePicker.launchCameraAsync({ mediaTypes: 'images' as any, quality: 0.75, base64: true });
-          if (!res.canceled && res.assets[0]?.base64) upload(res.assets[0].base64);
-        },
-      },
-      {
-        text: 'Choose from Library', onPress: async () => {
-          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-          if (status !== 'granted') return Alert.alert('Permission Required', 'Photo library access is needed.');
-          const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images' as any, quality: 0.75, base64: true });
-          if (!res.canceled && res.assets[0]?.base64) upload(res.assets[0].base64);
-        },
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
+  const addPhoto = () => promptForPhoto(upload, { title: 'Add Attachment', onBusy: setUploading });
 
   const upload = async (base64: string) => {
     setUploading(true);
