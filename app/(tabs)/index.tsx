@@ -171,50 +171,54 @@ export default function DashboardScreen() {
     if (!profile) { setLoading(false); return; }
     setProfile(profile);
 
-    const { company } = await getCompany(profile.company_id);
-    if (company) setCompany(company);
-
     const cid = profile.company_id;
     const role = profile.role;
-    const mods: string[] = (company as any)?.enabled_modules ?? [];
-    setModules(mods);
 
-    // Employee count for header
-    const { count: ec } = await supabase
-      .from('profiles')
-      .select('id', { count: 'exact', head: true })
-      .eq('company_id', cid)
-      .is('archived_at', null);
-    setEmpCount(ec ?? 0);
+    // Local calendar date (UTC rolls over to "tomorrow" in the evening in the US)
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
     // Overdue: trainings past due_date that have no completion record
     // due_date lives on trainings table; check via training_assignments → trainings join
-    const today = new Date().toISOString().split('T')[0];
-    const { data: overdueData } = await supabase
-      .from('training_assignments')
-      .select('training_id, trainings!inner(due_date)')
-      .eq('company_id', cid)
-      .lt('trainings.due_date', today);
-    if (overdueData && overdueData.length > 0) {
+    const loadOverdue = async (): Promise<number> => {
+      const { data: overdueData } = await supabase
+        .from('training_assignments')
+        .select('training_id, trainings!inner(due_date)')
+        .eq('company_id', cid)
+        .lt('trainings.due_date', today);
+      if (!overdueData || overdueData.length === 0) return 0;
       const overdueIds = (overdueData as any[]).map(r => r.training_id);
       const { count: completedOd } = await supabase
         .from('training_completions')
         .select('id', { count: 'exact', head: true })
         .eq('company_id', cid)
         .in('training_id', overdueIds);
-      setOverdue(Math.max(0, overdueIds.length - (completedOd ?? 0)));
-    } else {
-      setOverdue(0);
-    }
+      return Math.max(0, overdueIds.length - (completedOd ?? 0));
+    };
 
-    // Tile counts (only for visible tiles)
-    const visible = TILES.filter(t => t.roles.includes(role) && (!t.module || mods.includes(t.module)));
-    const results = await Promise.all(
-      visible.map(async (t) => {
+    // Everything below needs only the profile, so it all runs at once
+    // (it used to run one request after another). Module tiles are counted
+    // too and simply hidden if the company doesn't have that module.
+    const roleTiles = TILES.filter(t => t.roles.includes(role));
+    const [{ company }, { count: ec }, overdueCount, results] = await Promise.all([
+      getCompany(cid),
+      supabase
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('company_id', cid)
+        .is('archived_at', null),
+      loadOverdue().catch(() => 0),
+      Promise.all(roleTiles.map(async (t) => {
         const n = await t.count(cid, user.id).catch(() => 0);
         return [t.id, n] as [string, number];
-      })
-    );
+      })),
+    ]);
+
+    if (company) setCompany(company);
+    const mods: string[] = (company as any)?.enabled_modules ?? [];
+    setModules(mods);
+    setEmpCount(ec ?? 0);
+    setOverdue(overdueCount);
     setCounts(Object.fromEntries(results));
     setLoading(false);
     setRefreshing(false);

@@ -2,7 +2,7 @@
   "expo": {
     "name": "YardSafe",
     "slug": "yardsafe",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "scheme": "yardsafe",
     "platforms": [
@@ -48,7 +48,8 @@
         "expo-image-picker",
         {
           "photosPermission": "YardSafe accesses your photos so you can attach images to incident reports and equipment inspections.",
-          "cameraPermission": "YardSafe uses the camera to scan tool asset tags and to photograph incidents and equipment during inspections."
+          "cameraPermission": "YardSafe uses the camera to scan tool asset tags and to photograph incidents and equipment during inspections.",
+          "microphonePermission": false
         }
       ],
       [
