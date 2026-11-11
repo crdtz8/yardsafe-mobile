@@ -5,7 +5,10 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "yardsafe",
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
     "assetBundlePatterns": [
@@ -45,7 +48,15 @@
         "expo-image-picker",
         {
           "photosPermission": "YardSafe accesses your photos so you can attach images to incident reports and equipment inspections.",
-          "cameraPermission": "YardSafe uses the camera so you can photograph incidents and equipment during inspections."
+          "cameraPermission": "YardSafe uses the camera to scan tool asset tags and to photograph incidents and equipment during inspections."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "YardSafe uses the camera to scan tool asset tags and to photograph incidents and equipment during inspections.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
         }
       ],
       [

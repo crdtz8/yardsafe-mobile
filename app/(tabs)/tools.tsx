@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useLayoutEffect } from 'react';
+import { useEffect, useState, useCallback, useLayoutEffect, type ComponentType } from 'react';
 import {
   View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl,
   Modal, ScrollView, TextInput, TouchableOpacity, Alert, Platform, KeyboardAvoidingView,
@@ -8,6 +8,9 @@ import { useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { findToolByTag } from '@/lib/assetTags';
+import { hasBarcodeScanner } from '@/lib/scanner';
+import type { TagScannerProps } from '@/components/TagScanner';   // type only — erased at build time
 
 // ── Types & constants ────────────────────────────────────────────────────────
 
@@ -27,6 +30,12 @@ const CONDITIONS = ['Good', 'Fair', 'Needs Attention', 'Damaged'];
 
 const MGR_ROLES = ['admin', 'safety_manager', 'manager'];
 
+// The scanner screen uses the camera, which only app builds from v1.1 include.
+// It's loaded only after confirming that (see lib/scanner.ts); on older builds
+// this is null and the Scan button is hidden — nothing camera-related loads.
+const TagScanner: ComponentType<TagScannerProps> | null =
+  hasBarcodeScanner() ? require('@/components/TagScanner').default : null;
+
 // ── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ToolsScreen() {
@@ -44,6 +53,8 @@ export default function ToolsScreen() {
   const [history, setHistory] = useState<Txn[]>([]);
   const [action,  setAction]  = useState<{ tool: Tool; dir: 'check_out' | 'check_in' } | null>(null);
   const [formTool, setFormTool] = useState<Tool | 'new' | null>(null);
+  const [scanning,  setScanning]  = useState(false);
+  const [assignTag, setAssignTag] = useState<string | null>(null);   // scanned tag not yet on any tool
 
   const userName = (id: string | null) => people.find(p => p.id === id)?.name ?? 'Unknown';
 
@@ -85,6 +96,29 @@ export default function ToolsScreen() {
     setHistory((data as Txn[]) ?? []);
   };
 
+  // After a scan: open the matching tool (shows who has it + Check Out/In).
+  // Unknown tag: managers can assign it to a tool; others are told to ask one.
+  // (Short delay so iOS finishes closing the scanner before the next screen opens.)
+  const handleScanned = (value: string) => {
+    setScanning(false);
+    const tool = findToolByTag(tools, value);
+    setTimeout(() => {
+      if (tool) { openDetail(tool); return; }
+      if (isMgr) {
+        Alert.alert('Tag not found', `"${value}" isn't assigned to a tool yet.`, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Scan Again', onPress: () => setScanning(true) },
+          { text: 'Assign to a Tool', onPress: () => setAssignTag(value) },
+        ]);
+      } else {
+        Alert.alert('Tag not found', `"${value}" isn't assigned to a tool yet. Ask a manager to add it in Specialty Tools.`, [
+          { text: 'OK', style: 'cancel' },
+          { text: 'Scan Again', onPress: () => setScanning(true) },
+        ]);
+      }
+    }, 450);
+  };
+
   const filtered = tools.filter(t => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
@@ -111,6 +145,13 @@ export default function ToolsScreen() {
           </TouchableOpacity>
         )}
       </View>
+
+      {TagScanner && (
+        <TouchableOpacity style={s.scanBar} onPress={() => setScanning(true)} activeOpacity={0.8} accessibilityLabel="Scan asset tag">
+          <Ionicons name="barcode-outline" size={22} color={colors.white} />
+          <Text style={s.scanTxt}>Scan Asset Tag</Text>
+        </TouchableOpacity>
+      )}
 
       <FlatList
         data={filtered}
@@ -174,7 +215,124 @@ export default function ToolsScreen() {
         onClose={() => setFormTool(null)}
         onDone={() => { setFormTool(null); load(); }}
       />
+
+      {/* Barcode scanner (app builds with the camera only) */}
+      {TagScanner && (
+        <TagScanner visible={scanning} onClose={() => setScanning(false)} onScanned={handleScanned} />
+      )}
+
+      {/* Scanned tag that isn't on any tool yet → managers pick the tool */}
+      <AssignTagModal
+        tag={assignTag}
+        tools={tools}
+        onClose={() => setAssignTag(null)}
+        onAssigned={(tool) => {
+          setAssignTag(null);
+          setTools(prev => prev.map(t => (t.id === tool.id ? tool : t)));
+          setTimeout(() => openDetail(tool), 450);
+        }}
+      />
     </>
+  );
+}
+
+// ── Assign a scanned tag to a tool (managers) ────────────────────────────────
+// How existing asset-tag stickers get into YardSafe: scan a sticker, pick the
+// tool it's on. Tools without a tag are listed first; "Show all" allows
+// replacing a tool's current tag.
+
+function AssignTagModal({ tag, tools, onClose, onAssigned }: {
+  tag: string | null; tools: Tool[]; onClose: () => void; onAssigned: (tool: Tool) => void;
+}) {
+  const [q, setQ] = useState('');
+  const [showAll, setShowAll] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { if (tag) { setQ(''); setShowAll(false); } }, [tag]);
+
+  if (!tag) return null;
+
+  const needle = q.trim().toLowerCase();
+  const list = tools.filter(t =>
+    (showAll || !t.asset_tag) &&
+    (!needle || [t.name, t.category, t.asset_tag].some(v => (v ?? '').toLowerCase().includes(needle))));
+
+  const save = async (tool: Tool) => {
+    setSaving(true);
+    const { data, error } = await supabase.from('tools')
+      .update({ asset_tag: tag, updated_at: new Date().toISOString() })
+      .eq('id', tool.id).select().single();
+    setSaving(false);
+    if (error) {
+      Alert.alert('Could not assign tag',
+        error.code === '23505' ? `"${tag}" is already assigned to another tool.` : error.message);
+      return;
+    }
+    onAssigned(data as Tool);
+  };
+
+  const pickTool = (tool: Tool) => {
+    if (tool.asset_tag) {
+      Alert.alert('Replace tag?', `${tool.name} already has tag "${tool.asset_tag}". Replace it with "${tag}"?`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Replace', style: 'destructive', onPress: () => save(tool) },
+      ]);
+    } else {
+      Alert.alert('Assign tag?', `Assign tag "${tag}" to ${tool.name}?`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Assign', onPress: () => save(tool) },
+      ]);
+    }
+  };
+
+  return (
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.greenDk }}>
+        <View style={f.hdr}>
+          <TouchableOpacity onPress={onClose}><Text style={f.cancel}>Cancel</Text></TouchableOpacity>
+          <Text style={f.hdrTitle}>Assign Tag</Text>
+          {saving ? <ActivityIndicator color={colors.cream} style={{ width: 64 }} /> : <View style={{ width: 64 }} />}
+        </View>
+        <View style={{ flex: 1, backgroundColor: colors.bg }}>
+          <View style={s.tagBanner}>
+            <Ionicons name="barcode-outline" size={20} color={colors.greenDk} />
+            <Text style={s.tagBannerTxt}>Which tool has tag <Text style={{ fontWeight: '800' }}>{tag}</Text>?</Text>
+          </View>
+          <View style={s.searchWrap}>
+            <Ionicons name="search" size={16} color={colors.muted} />
+            <TextInput style={s.searchInput} value={q} onChangeText={setQ}
+              placeholder="Search tools…" placeholderTextColor={colors.muted} />
+          </View>
+          <TouchableOpacity onPress={() => setShowAll(v => !v)} style={s.showAll}>
+            <Ionicons name={showAll ? 'checkbox' : 'square-outline'} size={18} color={colors.greenMd} />
+            <Text style={s.sub}>Also show tools that already have a tag</Text>
+          </TouchableOpacity>
+          <FlatList
+            data={list}
+            keyExtractor={t => t.id}
+            ItemSeparatorComponent={() => <View style={s.sep} />}
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={
+              <View style={s.emptyWrap}>
+                <Text style={s.emptyText}>{showAll ? 'No tools match.' : 'Every tool already has a tag.'}</Text>
+                {!showAll && <Text style={s.emptyHint}>Turn on "Also show tools that already have a tag" to replace one.</Text>}
+              </View>
+            }
+            renderItem={({ item }) => (
+              <TouchableOpacity style={s.row} onPress={() => pickTool(item)} disabled={saving} activeOpacity={0.7}>
+                <View style={s.body}>
+                  <Text style={s.title}>{item.name}</Text>
+                  <Text style={s.sub}>
+                    {[item.category, item.asset_tag ? `Current tag: ${item.asset_tag}` : 'No tag yet'].filter(Boolean).join(' · ')}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </SafeAreaView>
+    </Modal>
   );
 }
 
@@ -393,6 +551,10 @@ function ToolForm({ tool, onClose, onDone }: {
     const { error } = editing
       ? await supabase.from('tools').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editing.id)
       : await supabase.from('tools').insert({ ...payload, location: 'Shop' });
+    if (error?.code === '23505') {
+      setSaving(false);
+      return Alert.alert('Tag already used', `Asset tag "${assetTag.trim()}" is already on another tool. Each tag can only belong to one tool.`);
+    }
     setSaving(false);
     if (error) return Alert.alert('Error', error.message);
     onDone();
@@ -460,6 +622,11 @@ function ToolForm({ tool, onClose, onDone }: {
 // ── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
+  scanBar:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: colors.greenMd, paddingVertical: 14, marginHorizontal: 12, marginTop: 10, marginBottom: 2, borderRadius: 8 },
+  scanTxt:   { color: colors.white, fontSize: 16, fontWeight: '800', letterSpacing: 0.3 },
+  tagBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.creamLt, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
+  tagBannerTxt: { fontSize: 15, color: colors.text, flex: 1 },
+  showAll:   { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
   list:      { flex: 1, backgroundColor: colors.bg },
   center:    { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
   empty:     { flex: 1 },
