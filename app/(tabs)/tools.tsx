@@ -214,6 +214,7 @@ export default function ToolsScreen() {
       {/* Add / edit tool (managers) */}
       <ToolForm
         tool={formTool}
+        tools={tools}
         onClose={() => setFormTool(null)}
         onDone={() => { setFormTool(null); load(); }}
       />
@@ -463,6 +464,11 @@ function ActionModal({ action, people, myId, onClose, onDone }: {
           </View>
           <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={f.sc}>
             <Text style={d.toolName}>{action.tool.name}</Text>
+            {/* Asset tag — shown for confirmation only (changed in Edit Tool) */}
+            <View style={d.tagLine}>
+              <Ionicons name="barcode-outline" size={16} color={colors.muted} />
+              <Text style={d.tagTxt}>{action.tool.asset_tag ? `Tag ${action.tool.asset_tag}` : 'No asset tag'}</Text>
+            </View>
 
             {isOut && (
               <>
@@ -521,8 +527,8 @@ function ActionModal({ action, people, myId, onClose, onDone }: {
 
 // ── Add / edit tool form ─────────────────────────────────────────────────────
 
-function ToolForm({ tool, onClose, onDone }: {
-  tool: Tool | 'new' | null; onClose: () => void; onDone: () => void;
+function ToolForm({ tool, tools, onClose, onDone }: {
+  tool: Tool | 'new' | null; tools: Tool[]; onClose: () => void; onDone: () => void;
 }) {
   const editing = tool && tool !== 'new' ? (tool as Tool) : null;
   const [name,     setName]     = useState('');
@@ -530,6 +536,7 @@ function ToolForm({ tool, onClose, onDone }: {
   const [category, setCategory] = useState('');
   const [notes,    setNotes]    = useState('');
   const [saving,   setSaving]   = useState(false);
+  const [scanning, setScanning] = useState(false);   // Assign Tag → scanner
 
   useEffect(() => {
     if (!tool) return;
@@ -540,6 +547,20 @@ function ToolForm({ tool, onClose, onDone }: {
   }, [tool]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!tool) return null;
+
+  // Assign Tag: scan the sticker on this tool and put its number in the field.
+  // Warn right away if that tag is already on a different tool.
+  const onTagScanned = (value: string) => {
+    setScanning(false);
+    const other = findToolByTag(tools.filter(t => t.id !== editing?.id), value);
+    setTimeout(() => {
+      if (other) {
+        Alert.alert('Tag already used', `Tag "${value}" is already on ${other.name}. Each tag can only belong to one tool.`);
+        return;
+      }
+      setAssetTag(value);
+    }, 450);
+  };
 
   const save = async () => {
     if (!name.trim()) return Alert.alert('Required', 'Enter a tool name.');
@@ -597,6 +618,12 @@ function ToolForm({ tool, onClose, onDone }: {
             <Text style={f.lbl}>ASSET TAG</Text>
             <TextInput style={f.inp} value={assetTag} onChangeText={setAssetTag}
               placeholder="e.g. RCG-0142" placeholderTextColor={colors.muted} />
+            {TagScanner && (
+              <TouchableOpacity style={f.assignBtn} onPress={() => setScanning(true)} activeOpacity={0.8} accessibilityLabel="Assign tag by scanning">
+                <Ionicons name="barcode-outline" size={18} color={colors.greenMd} />
+                <Text style={f.assignTxt}>{assetTag.trim() ? 'Assign New Tag (Scan)' : 'Assign Tag (Scan)'}</Text>
+              </TouchableOpacity>
+            )}
 
             <Text style={f.lbl}>CATEGORY</Text>
             <TextInput style={f.inp} value={category} onChangeText={setCategory}
@@ -616,6 +643,9 @@ function ToolForm({ tool, onClose, onDone }: {
             <View style={{ height: 40 }} />
           </ScrollView>
         </KeyboardAvoidingView>
+        {TagScanner && (
+          <TagScanner visible={scanning} onClose={() => setScanning(false)} onScanned={onTagScanned} />
+        )}
       </SafeAreaView>
     </Modal>
   );
@@ -660,6 +690,8 @@ const d = StyleSheet.create({
   bigBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 8, paddingVertical: 14, marginBottom: 24 },
   bigBtnTxt:   { fontSize: 15, fontWeight: '700' },
   toolName:    { fontSize: 18, fontWeight: '800', color: colors.text, marginTop: 4, marginBottom: 4 },
+  tagLine:     { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  tagTxt:      { fontSize: 14, fontWeight: '600', color: colors.muted, letterSpacing: 0.3 },
   histHdr:     { fontSize: 11, fontWeight: '800', color: colors.greenMd, letterSpacing: 1.5, marginBottom: 10, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
   histEmpty:   { fontSize: 13, color: colors.muted },
   histRow:     { flexDirection: 'row', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
@@ -677,6 +709,8 @@ const f = StyleSheet.create({
   sc:       { padding: 20, paddingBottom: 60 },
   lbl:      { fontSize: 10, fontWeight: '700', color: colors.muted, letterSpacing: 1.5, marginBottom: 6, marginTop: 20 },
   inp:      { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text },
+  assignBtn:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 8, paddingVertical: 11, borderRadius: 8, borderWidth: 1.5, borderColor: colors.greenMd, backgroundColor: colors.surface },
+  assignTxt:{ fontSize: 15, fontWeight: '700', color: colors.greenMd },
   ta:       { minHeight: 80, paddingTop: 12 },
   sel:      { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' },
   selVal:   { fontSize: 15, color: colors.text, flex: 1 },
