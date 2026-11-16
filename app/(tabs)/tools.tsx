@@ -28,7 +28,6 @@ type Person = { id: string; name: string };
 
 const CONDITIONS = ['Good', 'Fair', 'Needs Attention', 'Damaged'];
 
-const MGR_ROLES = ['admin', 'safety_manager', 'manager'];
 
 // The scanner screen uses the camera, which only app builds from v1.1 include.
 // It's loaded only after confirming that (see lib/scanner.ts); on older builds
@@ -43,7 +42,7 @@ export default function ToolsScreen() {
   const [tools,      setTools]      = useState<Tool[]>([]);
   const [people,     setPeople]     = useState<Person[]>([]);
   const [myId,       setMyId]       = useState<string>('');
-  const [isMgr,      setIsMgr]      = useState(false);
+  const [canManage,      setCanManage]      = useState(false);
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search,     setSearch]     = useState('');
@@ -62,8 +61,11 @@ export default function ToolsScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       setMyId(user.id);
-      const { data: prof } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-      setIsMgr(MGR_ROLES.includes((prof as any)?.role));
+      // "Manage Specialty Tools" permission (Roles page) — asks the same
+      // database check that guards tool edits, so the app and DB always agree.
+      // Checking tools in and out is open to everyone in the company.
+      const { data: allowed } = await supabase.rpc('can_manage_tools');
+      setCanManage(allowed === true);
     }
     const [{ data: tl }, { data: ppl }] = await Promise.all([
       supabase.from('tools').select('*').eq('is_active', true).order('name'),
@@ -80,13 +82,13 @@ export default function ToolsScreen() {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () =>
-        isMgr ? (
+        canManage ? (
           <TouchableOpacity onPress={() => setFormTool('new')} style={{ paddingHorizontal: 8 }}>
             <Ionicons name="add" size={26} color={colors.cream} />
           </TouchableOpacity>
         ) : null,
     });
-  }, [navigation, isMgr]);
+  }, [navigation, canManage]);
 
   const openDetail = async (tool: Tool) => {
     setDetail(tool);
@@ -104,7 +106,7 @@ export default function ToolsScreen() {
     const tool = findToolByTag(tools, value);
     setTimeout(() => {
       if (tool) { openDetail(tool); return; }
-      if (isMgr) {
+      if (canManage) {
         Alert.alert('Tag not found', `"${value}" isn't assigned to a tool yet.`, [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Scan Again', onPress: () => setScanning(true) },
@@ -166,7 +168,7 @@ export default function ToolsScreen() {
           <View style={s.emptyWrap}>
             <Ionicons name="build-outline" size={44} color={colors.border} />
             <Text style={s.emptyText}>No tools yet</Text>
-            {isMgr && <Text style={s.emptyHint}>Tap + to add one</Text>}
+            {canManage && <Text style={s.emptyHint}>Tap + to add one</Text>}
           </View>
         }
         renderItem={({ item }) => {
@@ -198,7 +200,7 @@ export default function ToolsScreen() {
 
       {/* Detail + history */}
       <DetailModal
-        tool={detail} history={history} userName={userName} isMgr={isMgr}
+        tool={detail} history={history} userName={userName} canManage={canManage}
         onClose={() => setDetail(null)}
         onEdit={() => { const t = detail; setDetail(null); setFormTool(t); }}
         onAction={(dir) => { const t = detail; setDetail(null); if (t) setAction({ tool: t, dir }); }}
@@ -341,8 +343,8 @@ function AssignTagModal({ tag, tools, onClose, onAssigned }: {
 
 // ── Detail modal ─────────────────────────────────────────────────────────────
 
-function DetailModal({ tool, history, userName, isMgr, onClose, onEdit, onAction }: {
-  tool: Tool | null; history: Txn[]; userName: (id: string | null) => string; isMgr: boolean;
+function DetailModal({ tool, history, userName, canManage, onClose, onEdit, onAction }: {
+  tool: Tool | null; history: Txn[]; userName: (id: string | null) => string; canManage: boolean;
   onClose: () => void; onEdit: () => void; onAction: (dir: 'check_out' | 'check_in') => void;
 }) {
   if (!tool) return null;
@@ -353,7 +355,7 @@ function DetailModal({ tool, history, userName, isMgr, onClose, onEdit, onAction
         <View style={f.hdr}>
           <TouchableOpacity onPress={onClose}><Text style={f.cancel}>Close</Text></TouchableOpacity>
           <Text style={f.hdrTitle} numberOfLines={1}>{tool.name}</Text>
-          {isMgr ? <TouchableOpacity onPress={onEdit}><Text style={f.save}>Edit</Text></TouchableOpacity> : <View style={{ width: 64 }} />}
+          {canManage ? <TouchableOpacity onPress={onEdit}><Text style={f.save}>Edit</Text></TouchableOpacity> : <View style={{ width: 64 }} />}
         </View>
         <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 20, paddingBottom: 48 }}>
           <View style={[d.statusCard, { borderColor: out ? '#F59E0B' : colors.greenMd }]}>
