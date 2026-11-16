@@ -147,10 +147,12 @@ export default function ToolsScreen() {
       </View>
 
       {TagScanner && (
-        <TouchableOpacity style={s.scanBar} onPress={() => setScanning(true)} activeOpacity={0.8} accessibilityLabel="Scan asset tag">
-          <Ionicons name="barcode-outline" size={22} color={colors.white} />
-          <Text style={s.scanTxt}>Scan Asset Tag</Text>
-        </TouchableOpacity>
+        <View style={s.scanWrap}>
+          <TouchableOpacity style={s.scanBar} onPress={() => setScanning(true)} activeOpacity={0.8} accessibilityLabel="Scan asset tag">
+            <Ionicons name="barcode-outline" size={22} color={colors.white} />
+            <Text style={s.scanTxt}>Scan Asset Tag</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       <FlatList
@@ -622,7 +624,9 @@ function ToolForm({ tool, onClose, onDone }: {
 // ── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  scanBar:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: colors.greenMd, paddingVertical: 14, marginHorizontal: 12, marginTop: 10, marginBottom: 2, borderRadius: 8 },
+  // Strip behind the Scan button matches the search bar (no white showing), with equal space above and below
+  scanWrap:  { backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
+  scanBar:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: colors.greenMd, paddingVertical: 14, borderRadius: 8 },
   scanTxt:   { color: colors.white, fontSize: 16, fontWeight: '800', letterSpacing: 0.3 },
   tagBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.creamLt, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
   tagBannerTxt: { fontSize: 15, color: colors.text, flex: 1 },

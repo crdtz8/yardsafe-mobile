@@ -6,7 +6,7 @@ import {
   Modal, View, Text, TouchableOpacity, StyleSheet, TextInput, Linking, ActivityIndicator,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, initialWindowMetrics } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult, type BarcodeType } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
@@ -46,6 +46,14 @@ export default function TagScanner({ visible, onClose, onScanned }: TagScannerPr
 
   const onBarcode = (r: BarcodeScanningResult) => deliver(r.data ?? '');
 
+  // Inside a full-screen Modal, SafeAreaView measured 0 on iPhone and the top
+  // bar ended up under the clock / Dynamic Island (X couldn't be tapped).
+  // Use the app's insets (with the launch-time values as a fallback) instead,
+  // plus a little extra room below the status bar.
+  const insets = useSafeAreaInsets();
+  const topPad    = Math.max(insets.top, initialWindowMetrics?.insets.top ?? 0) + 10;
+  const bottomPad = Math.max(insets.bottom, initialWindowMetrics?.insets.bottom ?? 0);
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
       <View style={st.root}>
@@ -74,8 +82,8 @@ export default function TagScanner({ visible, onClose, onScanned }: TagScannerPr
         ) : null}
 
         {/* Overlay: top bar, aiming frame, manual entry */}
-        <SafeAreaView style={st.overlay} edges={['top', 'bottom']} pointerEvents="box-none">
-          <View style={st.topBar}>
+        <View style={st.overlay} pointerEvents="box-none">
+          <View style={[st.topBar, { paddingTop: topPad }]}>
             <TouchableOpacity onPress={onClose} style={st.iconBtn} accessibilityLabel="Cancel scan">
               <Ionicons name="close" size={26} color={colors.white} />
             </TouchableOpacity>
@@ -112,7 +120,8 @@ export default function TagScanner({ visible, onClose, onScanned }: TagScannerPr
               </TouchableOpacity>
             </View>
           </KeyboardAvoidingView>
-        </SafeAreaView>
+          <View style={{ height: bottomPad, backgroundColor: 'rgba(0,0,0,0.6)' }} />
+        </View>
       </View>
     </Modal>
   );
@@ -126,7 +135,7 @@ const st = StyleSheet.create({
   btn:         { backgroundColor: colors.greenMd, paddingHorizontal: 22, paddingVertical: 12, borderRadius: 6, marginTop: 8 },
   btnTxt:      { color: colors.white, fontWeight: '700', fontSize: 15 },
   overlay:     { ...StyleSheet.absoluteFillObject, justifyContent: 'space-between' },
-  topBar:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingTop: 4, backgroundColor: 'rgba(0,0,0,0.45)' },
+  topBar:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingBottom: 6, backgroundColor: 'rgba(0,0,0,0.45)' },
   iconBtn:     { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   title:       { color: colors.white, fontSize: 17, fontWeight: '700' },
   frameWrap:   { alignItems: 'center' },
