@@ -102,6 +102,9 @@ export default function TagScanner({ visible, onClose, onScanned }: TagScannerPr
             </View>
           )}
 
+          {/* Manual entry + bottom inset grouped together so the bar sits at the
+              very bottom (the overlay spreads its children evenly) */}
+          <View>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={st.manual}>
               <TextInput
@@ -121,6 +124,7 @@ export default function TagScanner({ visible, onClose, onScanned }: TagScannerPr
             </View>
           </KeyboardAvoidingView>
           <View style={{ height: bottomPad, backgroundColor: 'rgba(0,0,0,0.6)' }} />
+          </View>
         </View>
       </View>
     </Modal>
