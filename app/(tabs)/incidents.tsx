@@ -10,6 +10,7 @@ import { promptForPhoto } from '@/lib/photos';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { todayISO } from '@/lib/dates';
 import { uploadImageBase64 } from '@/lib/storage';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -106,7 +107,7 @@ const TREATMENT_OPTS = [
   { label: 'Hospitalization',     value: 'hospitalization' },
 ];
 
-const today = () => new Date().toISOString().split('T')[0];
+const today = todayISO;
 
 const blankDraft = () => ({
   title: '', incident_date: today(), incident_time: '',

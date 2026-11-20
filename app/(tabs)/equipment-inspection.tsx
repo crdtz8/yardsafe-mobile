@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { promptForPhoto } from '@/lib/photos';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { todayISO } from '@/lib/dates';
 import { uploadImageBase64 } from '@/lib/storage';
 
 type Result = 'pass' | 'fail' | 'na';
@@ -147,7 +148,7 @@ export default function EquipmentInspectionScreen() {
     setSaving(true);
     const overall_status = items.some(i => i.required && i.result === 'fail') ? 'fail' : 'pass';
     const { data: { user } } = await supabase.auth.getUser();
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayISO();
 
     const { error } = await supabase.from('equipment_inspections').insert({
       equipment_id:    equipmentId,

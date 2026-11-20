@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { parseDate, daysUntil } from '@/lib/dates';
 
 type Assignment = {
   training_id: string;
@@ -55,7 +56,7 @@ export default function MyTrainingsScreen() {
       if (!da && !db) return 0;
       if (!da) return 1;
       if (!db) return -1;
-      return new Date(da).getTime() - new Date(db).getTime();
+      return (parseDate(da)?.getTime() ?? 0) - (parseDate(db)?.getTime() ?? 0);
     });
 
     setItems(pending as unknown as Assignment[]);
@@ -170,8 +171,8 @@ export default function MyTrainingsScreen() {
         renderItem={({ item }) => {
           const t = item.trainings;
           const effectiveDue = item.due_date ?? t?.due_date;
-          const dueDate = effectiveDue ? new Date(effectiveDue) : null;
-          const overdue = dueDate && dueDate < new Date();
+          const dueDate = parseDate(effectiveDue);
+          const overdue = dueDate && (daysUntil(effectiveDue) ?? 0) < 0;
           const hasContent = !!(t?.type === 'video' ? t?.video_url : t?.doc_url);
           // Video trainings with a quiz must be completed through the player,
           // so the quick "mark complete" shortcut is hidden for them.

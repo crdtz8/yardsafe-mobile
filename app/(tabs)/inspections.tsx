@@ -8,6 +8,7 @@ import { useNavigation, router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { todayISO, formatDate } from '@/lib/dates';
 import { templateToSections, defaultSections } from '@/constants/inspectionSections';
 
 type Inspection = {
@@ -23,7 +24,7 @@ const STATUS_COLOR: Record<string, string> = {
 // New inspections always start as a draft (the DB allows only 'draft'/'complete';
 // you complete it from the detail screen).
 const blankDraft = () => ({
-  title: '', date: new Date().toISOString().split('T')[0], location: '', status: 'draft',
+  title: '', date: todayISO(), location: '', status: 'draft',
 });
 
 export default function InspectionsScreen() {
@@ -120,7 +121,7 @@ export default function InspectionsScreen() {
               <Text style={s.title}>{item.title ?? 'Inspection'}</Text>
               <Text style={s.sub}>
                 {item.profiles?.name ? `${item.profiles.name} · ` : ''}
-                {item.date ? new Date(item.date).toLocaleDateString() : '—'}
+                {item.date ? formatDate(item.date) : '—'}
                 {item.location ? ` · ${item.location}` : ''}
               </Text>
             </View>

@@ -8,6 +8,7 @@ import { useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { formatDate } from '@/lib/dates';
 
 type Action = {
   id: string; title: string; description: string | null; status: string | null; priority: string | null;
@@ -168,7 +169,7 @@ export default function CorrectiveScreen() {
               <Text style={s.title}>{item.title}</Text>
               <Text style={s.sub}>
                 {item.assignee?.name ? `${item.assignee.name} · ` : ''}
-                {item.due_date ? `Due ${new Date(item.due_date).toLocaleDateString()}` : 'No due date'}
+                {item.due_date ? `Due ${formatDate(item.due_date)}` : 'No due date'}
               </Text>
             </View>
             {item.status && (

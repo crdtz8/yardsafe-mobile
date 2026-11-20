@@ -9,6 +9,7 @@ import { promptForPhoto } from '@/lib/photos';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { daysUntil, addDaysISO, todayISO } from '@/lib/dates';
 import { uploadImageBase64 } from '@/lib/storage';
 
 // ── Domain constants (mirror the web RegulatoryTasks page) ─────────────────────
@@ -62,7 +63,7 @@ const DUE_META: Record<string, { label: string; color: string; priority: number 
 
 const dueStatus = (item: Item): string => {
   if (!item.next_due_date) return 'no_date';
-  const days = Math.floor((new Date(item.next_due_date).getTime() - Date.now()) / 86400000);
+  const days = daysUntil(item.next_due_date) ?? 0;
   if (days < 0) return 'overdue';
   if (days <= 7) return 'due_soon';
   if (days <= 30) return 'upcoming';
@@ -72,12 +73,10 @@ const dueStatus = (item: Item): string => {
 const nextDueDate = (freq: string, fromDate: string): string | null => {
   const days = freqMeta(freq).days;
   if (!days) return null;
-  const d = new Date(fromDate);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return addDaysISO(fromDate, days);
 };
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const todayStr = todayISO;
 const fmt = (s: string | null) => (s ? new Date(s + 'T12:00:00').toLocaleDateString() : '—');
 
 const MGR_ROLES = ['admin', 'safety_manager', 'manager'];

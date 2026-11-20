@@ -9,6 +9,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { addDaysISO } from '@/lib/dates';
 import { callAdminApi } from '@/lib/api';
 
 type Course = {
@@ -28,11 +29,7 @@ const TYPE_ICON: Record<string, React.ComponentProps<typeof Ionicons>['name']> =
   document: 'document-text-outline',
 };
 
-const defaultDue = () => {
-  const d = new Date();
-  d.setDate(d.getDate() + 14);
-  return d.toISOString().split('T')[0];
-};
+const defaultDue = () => addDaysISO(new Date(), 14);
 
 export default function LibraryScreen() {
   const [items,      setItems]      = useState<Course[]>([]);

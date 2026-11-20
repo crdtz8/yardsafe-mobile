@@ -8,6 +8,7 @@ import { useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { daysUntil, formatDate } from '@/lib/dates';
 
 type CertRecord = {
   id: string;
@@ -26,7 +27,7 @@ const blankDraft = () => ({
 
 function certStatus(expDate: string | null): { label: string; color: string } {
   if (!expDate) return { label: 'Active', color: colors.greenMd };
-  const days = Math.ceil((new Date(expDate).getTime() - Date.now()) / 86400000);
+  const days = daysUntil(expDate) ?? 0;
   if (days < 0)  return { label: 'Expired',       color: colors.red };
   if (days < 30) return { label: 'Expiring Soon',  color: '#F59E0B' };
   return { label: 'Active', color: colors.greenMd };
@@ -167,7 +168,7 @@ export default function CertificationsScreen() {
                 </Text>
                 <Text style={s.sub}>
                   {item.employee?.name ?? '—'}
-                  {item.expiration_date ? ` · Exp ${new Date(item.expiration_date).toLocaleDateString()}` : ''}
+                  {item.expiration_date ? ` · Exp ${formatDate(item.expiration_date)}` : ''}
                 </Text>
               </View>
               <View style={[s.badge, { backgroundColor: color + '22' }]}>

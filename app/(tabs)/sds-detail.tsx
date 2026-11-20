@@ -7,6 +7,7 @@ import { useLocalSearchParams, useNavigation, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { formatDate } from '@/lib/dates';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -154,7 +155,7 @@ export default function SdsDetailScreen() {
         {item.chemical_family && <Row label="Chemical Family" value={item.chemical_family} />}
         {item.cas_number     && <Row label="CAS Number"     value={item.cas_number} mono />}
         {item.un_number      && <Row label="UN / DOT Number" value={item.un_number} mono />}
-        {item.revision_date  && <Row label="Revision Date"  value={new Date(item.revision_date).toLocaleDateString()} />}
+        {item.revision_date  && <Row label="Revision Date"  value={formatDate(item.revision_date)} />}
       </View>
 
       {/* Locations */}
