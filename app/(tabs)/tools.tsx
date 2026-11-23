@@ -8,6 +8,7 @@ import { useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { currentUser, guardedLoad } from '@/lib/session';
 import { findToolByTag } from '@/lib/assetTags';
 import { hasBarcodeScanner } from '@/lib/scanner';
 import type { TagScannerProps } from '@/components/TagScanner';   // type only — erased at build time
@@ -57,8 +58,8 @@ export default function ToolsScreen() {
 
   const userName = (id: string | null) => people.find(p => p.id === id)?.name ?? 'Unknown';
 
-  const load = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+  const loadScreen = useCallback(async () => {
+    const user = await currentUser();
     if (user) {
       setMyId(user.id);
       // "Manage Specialty Tools" permission (Roles page) — asks the same
@@ -76,6 +77,9 @@ export default function ToolsScreen() {
     setLoading(false);
     setRefreshing(false);
   }, []);
+
+  // The spinner always clears, even if a request fails or times out.
+  const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
   useEffect(() => { load(); }, [load]);
 

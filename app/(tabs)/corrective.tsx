@@ -8,6 +8,7 @@ import { useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { currentUser, guardedLoad, myProfile } from '@/lib/session';
 import { formatDate } from '@/lib/dates';
 
 type Action = {
@@ -72,7 +73,7 @@ export default function CorrectiveScreen() {
     setEditItem(item);
   };
 
-  const load = useCallback(async () => {
+  const loadScreen = useCallback(async () => {
     const { data } = await supabase
       .from('corrective_actions')
       .select('id, title, description, status, priority, due_date, assigned_to, assignee:profiles!assigned_to(name)')
@@ -81,6 +82,9 @@ export default function CorrectiveScreen() {
     setLoading(false);
     setRefreshing(false);
   }, []);
+
+  // The spinner always clears, even if a request fails or times out.
+  const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -107,8 +111,8 @@ export default function CorrectiveScreen() {
       setEditItem(null);
       load();
     } else {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: prof }     = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
+      const user = await currentUser();
+      const { data: prof }     = await myProfile();
       const { error } = await supabase.from('corrective_actions').insert({
         title:       draft.title.trim(),
         description: draft.description || null,

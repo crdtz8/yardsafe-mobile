@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { currentUser, guardedLoad } from '@/lib/session';
 import { getProfile, getCompany, signOut } from '@/lib/auth';
 import NotificationPermissionBanner from '@/components/NotificationPermissionBanner';
 
@@ -163,8 +164,8 @@ export default function DashboardScreen() {
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+  const loadScreen = useCallback(async () => {
+    const user = await currentUser();
     if (!user) return;
 
     const { profile } = await getProfile(user.id);
@@ -223,6 +224,9 @@ export default function DashboardScreen() {
     setLoading(false);
     setRefreshing(false);
   }, []);
+
+  // The spinner always clears, even if a request fails or times out.
+  const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
   useEffect(() => { load(); }, [load]);
 

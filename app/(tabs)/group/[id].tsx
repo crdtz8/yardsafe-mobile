@@ -8,6 +8,7 @@ import { useLocalSearchParams, useNavigation, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { currentUser, guardedLoad, myProfile } from '@/lib/session';
 import { callNotificationsApi } from '@/lib/api';
 import {
   updateGroup, deleteGroup, assignTrainingToGroup, removeTrainingFromGroup,
@@ -34,9 +35,9 @@ export default function GroupDetailScreen() {
   const [showEdit,  setShowEdit]  = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
 
-  const load = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: prof } = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
+  const loadScreen = useCallback(async () => {
+    const user = await currentUser();
+    const { data: prof } = await myProfile();
     const cid = prof?.company_id as string;
     setCompanyId(cid);
 
@@ -52,6 +53,9 @@ export default function GroupDetailScreen() {
     setAssigned(new Set(((gts as any[]) ?? []).map(r => r.training_id)));
     setLoading(false);
   }, [gid]);
+
+  // The spinner always clears, even if a request fails or times out.
+  const load = useCallback(() => guardedLoad(loadScreen, () => setLoading(false)), [loadScreen]);
 
   useEffect(() => { load(); }, [load]);
 

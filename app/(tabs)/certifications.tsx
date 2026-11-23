@@ -8,6 +8,7 @@ import { useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { guardedLoad } from '@/lib/session';
 import { daysUntil, formatDate } from '@/lib/dates';
 
 type CertRecord = {
@@ -73,7 +74,7 @@ export default function CertificationsScreen() {
 
   const set = (key: string) => (val: string) => setDraft(d => ({ ...d, [key]: val }));
 
-  const load = useCallback(async () => {
+  const loadScreen = useCallback(async () => {
     const { data } = await supabase
       .from('employee_certifications')
       .select(`id, employee_id, cert_type_id,
@@ -85,6 +86,9 @@ export default function CertificationsScreen() {
     setLoading(false);
     setRefreshing(false);
   }, []);
+
+  // The spinner always clears, even if a request fails or times out.
+  const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
   useEffect(() => { load(); }, [load]);
 

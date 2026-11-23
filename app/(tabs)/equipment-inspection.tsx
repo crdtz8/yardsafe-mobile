@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { promptForPhoto } from '@/lib/photos';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { currentUser, guardedLoad } from '@/lib/session';
 import { todayISO } from '@/lib/dates';
 import { uploadImageBase64 } from '@/lib/storage';
 
@@ -98,7 +99,7 @@ export default function EquipmentInspectionScreen() {
     navigation.setOptions({ title: 'Pre-Op Inspection' });
   }, [navigation]);
 
-  const load = useCallback(async () => {
+  const loadScreen = useCallback(async () => {
     // Prefer a custom template for this equipment type (global or company).
     const { data: tpls } = await supabase
       .from('equipment_inspection_templates')
@@ -117,6 +118,9 @@ export default function EquipmentInspectionScreen() {
     setItems(base.map(b => ({ id: b.id, label: b.label, required: !!b.required, result: null, note: '' })));
     setLoading(false);
   }, [equipmentType]);
+
+  // The spinner always clears, even if a request fails or times out.
+  const load = useCallback(() => guardedLoad(loadScreen, () => setLoading(false)), [loadScreen]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -147,7 +151,7 @@ export default function EquipmentInspectionScreen() {
     }
     setSaving(true);
     const overall_status = items.some(i => i.required && i.result === 'fail') ? 'fail' : 'pass';
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await currentUser();
     const today = todayISO();
 
     const { error } = await supabase.from('equipment_inspections').insert({

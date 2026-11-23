@@ -9,6 +9,7 @@ import { promptForPhoto } from '@/lib/photos';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { currentUser, guardedLoad, myProfile } from '@/lib/session';
 import { daysUntil, addDaysISO, todayISO } from '@/lib/dates';
 import { uploadImageBase64 } from '@/lib/storage';
 
@@ -99,11 +100,11 @@ export default function RegulatoryTasksScreen() {
 
   const userName = (id: string | null) => people.find(p => p.id === id)?.name ?? '—';
 
-  const load = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+  const loadScreen = useCallback(async () => {
+    const user = await currentUser();
     if (user) {
       setMyId(user.id);
-      const { data: prof } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+      const { data: prof } = await myProfile();
       setIsMgr(MGR_ROLES.includes((prof as any)?.role));
     }
     const [{ data: it }, { data: ppl }] = await Promise.all([
@@ -120,6 +121,9 @@ export default function RegulatoryTasksScreen() {
     setLoading(false);
     setRefreshing(false);
   }, []);
+
+  // The spinner always clears, even if a request fails or times out.
+  const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
   useEffect(() => { load(); }, [load]);
 

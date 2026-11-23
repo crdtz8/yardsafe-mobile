@@ -10,6 +10,7 @@ import { promptForPhoto } from '@/lib/photos';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { currentUser, guardedLoad, myProfile } from '@/lib/session';
 import { todayISO } from '@/lib/dates';
 import { uploadImageBase64 } from '@/lib/storage';
 
@@ -232,9 +233,9 @@ export default function IncidentsScreen() {
   useEffect(() => {
     if (!showModal) return;
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await currentUser();
       if (!user) return;
-      const { data: prof } = await supabase.from('profiles').select('company_id').eq('id', user.id).single();
+      const { data: prof } = await myProfile();
       if (!prof?.company_id) return;
       const { data } = await supabase.from('profiles').select('id, name')
         .eq('company_id', prof.company_id).eq('is_active', true).order('name');
@@ -269,7 +270,7 @@ export default function IncidentsScreen() {
 
   // ── Data load ──────────────────────────────────────────────────────────────
 
-  const load = useCallback(async () => {
+  const loadScreen = useCallback(async () => {
     const { data } = await supabase
       .from('incidents')
       .select('id, title, incident_type, incident_date, severity, status')
@@ -278,6 +279,9 @@ export default function IncidentsScreen() {
     setLoading(false);
     setRefreshing(false);
   }, []);
+
+  // The spinner always clears, even if a request fails or times out.
+  const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -388,8 +392,8 @@ export default function IncidentsScreen() {
       setSaving(false);
       if (error) return Alert.alert('Error', error.message);
     } else {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: prof } = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
+      const user = await currentUser();
+      const { data: prof } = await myProfile();
       const { data, error } = await supabase.from('incidents')
         .insert({ ...payload, company_id: prof?.company_id, reported_by: user!.id })
         .select('id').single();
@@ -400,8 +404,8 @@ export default function IncidentsScreen() {
 
     // Save new photos to incident_photos table
     if (incidentId && photos.length > 0) {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: prof } = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
+      const user = await currentUser();
+      const { data: prof } = await myProfile();
       const existingPaths = editItem
         ? (await supabase.from('incident_photos').select('path').eq('incident_id', incidentId)).data?.map((r: any) => r.path) ?? []
         : [];

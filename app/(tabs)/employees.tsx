@@ -8,6 +8,7 @@ import { useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { guardedLoad } from '@/lib/session';
 import { callAdminApi, callNotificationsApi, genTempPassword } from '@/lib/api';
 
 type Employee = { id: string; name: string; email: string; role: string; phone?: string };
@@ -63,7 +64,7 @@ export default function EmployeesScreen() {
 
   const set = (key: string) => (val: string) => setDraft(d => ({ ...d, [key]: val }));
 
-  const load = useCallback(async () => {
+  const loadScreen = useCallback(async () => {
     const { data } = await supabase
       .from('profiles')
       .select('id, name, email, role, phone')
@@ -73,6 +74,9 @@ export default function EmployeesScreen() {
     setLoading(false);
     setRefreshing(false);
   }, []);
+
+  // The spinner always clears, even if a request fails or times out.
+  const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
   useEffect(() => { load(); }, [load]);
 

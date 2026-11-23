@@ -9,6 +9,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { guardedLoad } from '@/lib/session';
 import { addDaysISO } from '@/lib/dates';
 import { callAdminApi } from '@/lib/api';
 
@@ -45,7 +46,7 @@ export default function LibraryScreen() {
   const [dueDate,   setDueDate]   = useState('');
   const [assigning, setAssigning] = useState(false);
 
-  const load = useCallback(async () => {
+  const loadScreen = useCallback(async () => {
     const [{ data: courses }, { data: cats }] = await Promise.all([
       supabase
         .from('trainings')
@@ -58,6 +59,9 @@ export default function LibraryScreen() {
     setLoading(false);
     setRefreshing(false);
   }, []);
+
+  // The spinner always clears, even if a request fails or times out.
+  const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
   useEffect(() => { load(); }, [load]);
 

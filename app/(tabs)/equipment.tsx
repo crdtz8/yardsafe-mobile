@@ -8,6 +8,7 @@ import { useNavigation, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { currentUser, guardedLoad, myProfile } from '@/lib/session';
 
 type Equipment = {
   id: string; name: string; equipment_type: string | null;
@@ -68,7 +69,7 @@ export default function EquipmentScreen() {
 
   const set = (key: string) => (val: string) => setDraft(d => ({ ...d, [key]: val }));
 
-  const load = useCallback(async () => {
+  const loadScreen = useCallback(async () => {
     const { data } = await supabase
       .from('equipment')
       .select('id, name, equipment_type, make, model, status, location')
@@ -77,6 +78,9 @@ export default function EquipmentScreen() {
     setLoading(false);
     setRefreshing(false);
   }, []);
+
+  // The spinner always clears, even if a request fails or times out.
+  const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -99,8 +103,8 @@ export default function EquipmentScreen() {
       setEditItem(null);
       load();
     } else {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: prof }     = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
+      const user = await currentUser();
+      const { data: prof }     = await myProfile();
       const { error } = await supabase.from('equipment').insert({
         name:           draft.name.trim(),
         equipment_type: draft.equipment_type || null,

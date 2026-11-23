@@ -7,6 +7,7 @@ import { useLocalSearchParams, useNavigation, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { currentUser, myProfile } from '@/lib/session';
 import { formatDate } from '@/lib/dates';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -61,9 +62,9 @@ export default function SdsDetailScreen() {
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await currentUser();
       if (!user) return;
-      const { data: prof } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+      const { data: prof } = await myProfile();
       if (prof) setRole(prof.role);
     })();
   }, []);

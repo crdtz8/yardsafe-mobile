@@ -8,6 +8,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { currentUser, myProfile } from '@/lib/session';
 
 // Cloudflare Stream embed URL → HLS manifest so expo-video can play it natively
 function resolveVideoUri(url: string): string {
@@ -107,11 +108,11 @@ export default function TrainingPlayerScreen() {
   }, [shuffleKey, training?.id]);
 
   const recordCompletion = async (pct: number | null, quizAnswers: Record<string, string | null> | null, sig: string | null) => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await currentUser();
     if (!user || !id) return { error: 'Not signed in' };
     // company_id is NOT NULL and gated by RLS (company_id = get_my_company_id()),
     // so it must be supplied or the insert is rejected.
-    const { data: prof } = await supabase.from('profiles').select('company_id').eq('id', user.id).single();
+    const { data: prof } = await myProfile();
     const { error } = await supabase.from('training_completions').upsert({
       training_id:   id,
       user_id:       user.id,

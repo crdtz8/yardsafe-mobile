@@ -7,6 +7,7 @@ import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { supabase } from './supabase';
+import { currentUser } from './session';
 
 // Foreground behavior: show a banner + play a sound (don't touch the app badge).
 Notifications.setNotificationHandler({
@@ -22,7 +23,7 @@ export async function registerForPush(): Promise<void> {
   // Push tokens only exist on physical devices, never simulators.
   if (!Device.isDevice) return;
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return;
 
   // Ask for permission only if not already decided.

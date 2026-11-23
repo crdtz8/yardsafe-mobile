@@ -8,6 +8,7 @@ import { useNavigation, router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { guardedLoad } from '@/lib/session';
 import { fetchGroups, createGroup, type Group } from '@/lib/groups';
 
 export default function GroupsScreen() {
@@ -31,7 +32,7 @@ export default function GroupsScreen() {
     });
   }, [navigation]);
 
-  const load = useCallback(async () => {
+  const loadScreen = useCallback(async () => {
     const { data } = await fetchGroups();
     const gs = (data as Group[]) ?? [];
     setGroups(gs);
@@ -45,6 +46,9 @@ export default function GroupsScreen() {
     setLoading(false);
     setRefreshing(false);
   }, []);
+
+  // The spinner always clears, even if a request fails or times out.
+  const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
   useEffect(() => { load(); }, [load]);
   // Refresh counts when returning from the detail screen.

@@ -8,6 +8,7 @@ import { useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { currentUser, guardedLoad, myProfile } from '@/lib/session';
 
 type Permit = {
   id: string;
@@ -150,15 +151,11 @@ export default function PermitsScreen() {
 
   const set = (key: keyof Draft) => (val: string) => setDraft(d => ({ ...d, [key]: val }));
 
-  const load = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+  const loadScreen = useCallback(async () => {
+    const user = await currentUser();
     if (!user) { setLoading(false); setRefreshing(false); return; }
 
-    const { data: prof } = await supabase
-      .from('profiles')
-      .select('company_id, role')
-      .eq('id', user.id)
-      .single();
+    const { data: prof } = await myProfile();
 
     const cid  = prof?.company_id ?? '';
     const r    = prof?.role ?? 'employee';
@@ -190,6 +187,9 @@ export default function PermitsScreen() {
     setLoading(false);
     setRefreshing(false);
   }, []);
+
+  // The spinner always clears, even if a request fails or times out.
+  const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -239,7 +239,7 @@ export default function PermitsScreen() {
       const res = await supabase.from('permits').update(payload).eq('id', editItem.id);
       error = res.error;
     } else {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await currentUser();
       const res = await supabase.from('permits').insert({
         ...payload,
         issued_by:  user!.id,

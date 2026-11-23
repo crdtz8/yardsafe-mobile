@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { currentUser, guardedLoad, myProfile } from '@/lib/session';
 import { parseDate, daysUntil } from '@/lib/dates';
 
 type Assignment = {
@@ -31,8 +32,8 @@ export default function MyTrainingsScreen() {
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+  const loadScreen = useCallback(async () => {
+    const user = await currentUser();
     if (!user) { setLoading(false); return; }
 
     const { data: assignments, error } = await supabase
@@ -63,6 +64,9 @@ export default function MyTrainingsScreen() {
     setLoading(false);
     setRefreshing(false);
   }, []);
+
+  // The spinner always clears, even if a request fails or times out.
+  const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -105,10 +109,10 @@ export default function MyTrainingsScreen() {
         {
           text: 'Mark Complete',
           onPress: async () => {
-            const { data: { user } } = await supabase.auth.getUser();
+            const user = await currentUser();
             if (!user) return;
             // company_id is required (NOT NULL + RLS check), so supply it.
-            const { data: prof } = await supabase.from('profiles').select('company_id').eq('id', user.id).single();
+            const { data: prof } = await myProfile();
             const { error } = await supabase
               .from('training_completions')
               .upsert({ training_id: item.training_id, user_id: user.id, company_id: prof?.company_id, completed_at: new Date().toISOString() }, { onConflict: 'training_id,user_id' });

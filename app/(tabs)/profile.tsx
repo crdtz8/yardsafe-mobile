@@ -6,6 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { currentUser, guardedLoad } from '@/lib/session';
 import { signOut } from '@/lib/auth';
 
 const ROLE_LABEL: Record<string, string> = {
@@ -32,8 +33,8 @@ export default function ProfileScreen() {
   const [showPw,    setShowPw]    = useState(false);
   const [savingPw,  setSavingPw]  = useState(false);
 
-  const load = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+  const loadScreen = useCallback(async () => {
+    const user = await currentUser();
     if (!user) { setLoading(false); return; }
     setUserId(user.id);
     const { data } = await supabase
@@ -49,6 +50,9 @@ export default function ProfileScreen() {
     }
     setLoading(false);
   }, []);
+
+  // The spinner always clears, even if a request fails or times out.
+  const load = useCallback(() => guardedLoad(loadScreen, () => setLoading(false)), [loadScreen]);
 
   useEffect(() => { load(); }, [load]);
 

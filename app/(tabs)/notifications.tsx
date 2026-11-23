@@ -7,6 +7,7 @@ import { useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { currentUser, guardedLoad } from '@/lib/session';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -146,9 +147,9 @@ export default function NotificationsScreen() {
 
   // ─── Data loading ───────────────────────────────────────────────────────────
 
-  const load = useCallback(async () => {
+  const loadScreen = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await currentUser();
       if (!user) { setLoading(false); setRefreshing(false); return; }
 
       const { data, error } = await supabase
@@ -167,6 +168,9 @@ export default function NotificationsScreen() {
       setRefreshing(false);
     }
   }, []);
+
+  // The spinner always clears, even if a request fails or times out.
+  const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
   useEffect(() => { load(); }, [load]);
 

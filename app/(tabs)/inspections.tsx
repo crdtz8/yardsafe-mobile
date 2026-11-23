@@ -8,6 +8,7 @@ import { useNavigation, router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { currentUser, guardedLoad, myProfile } from '@/lib/session';
 import { todayISO, formatDate } from '@/lib/dates';
 import { templateToSections, defaultSections } from '@/constants/inspectionSections';
 
@@ -51,7 +52,7 @@ export default function InspectionsScreen() {
 
   const set = (key: string) => (val: string) => setDraft(d => ({ ...d, [key]: val }));
 
-  const load = useCallback(async () => {
+  const loadScreen = useCallback(async () => {
     const { data } = await supabase
       .from('inspections')
       .select('id, title, date, location, status, score, profiles(name)')
@@ -60,6 +61,9 @@ export default function InspectionsScreen() {
     setLoading(false);
     setRefreshing(false);
   }, []);
+
+  // The spinner always clears, even if a request fails or times out.
+  const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
   useEffect(() => { load(); }, [load]);
   // Refresh when returning from the detail screen so a just-completed inspection
@@ -78,8 +82,8 @@ export default function InspectionsScreen() {
   const handleSave = async () => {
     if (!draft.title.trim()) return Alert.alert('Required', 'Enter an inspection title.');
     setSaving(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: prof }     = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
+    const user = await currentUser();
+    const { data: prof }     = await myProfile();
     const chosen = templates.find(t => t.id === templateId);
     const { data: newRow, error } = await supabase.from('inspections').insert({
       title:        draft.title.trim(),

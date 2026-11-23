@@ -8,6 +8,7 @@ import { useNavigation, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { currentUser, myProfile } from '@/lib/session';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -67,10 +68,10 @@ export default function DocumentsScreen() {
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await currentUser();
       if (!user) return;
       setUserId(user.id);
-      const { data: prof } = await supabase.from('profiles').select('role, company_id').eq('id', user.id).single();
+      const { data: prof } = await myProfile();
       if (prof) { setRole(prof.role); setCompanyId(prof.company_id); }
       const { data: acks } = await supabase.from('document_acknowledgments').select('document_id').eq('employee_id', user.id);
       setAckedIds(new Set((acks ?? []).map((a: any) => a.document_id)));
@@ -152,8 +153,8 @@ export default function DocumentsScreen() {
       if (error) return Alert.alert('Error', error.message);
       setEditDoc(null); loadDocs();
     } else {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: prof } = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
+      const user = await currentUser();
+      const { data: prof } = await myProfile();
       const { error } = await supabase.from('documents').insert({ title: docDraft.title.trim(), category: docDraft.category || null, version: docDraft.version || null, description: docDraft.description || null, company_id: prof?.company_id, is_active: true });
       setSaving(false);
       if (error) return Alert.alert('Error', error.message);
@@ -191,8 +192,8 @@ export default function DocumentsScreen() {
       if (error) return Alert.alert('Error', error.message);
       setEditSds(null); loadSds();
     } else {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: prof } = await supabase.from('profiles').select('company_id').eq('id', user!.id).single();
+      const user = await currentUser();
+      const { data: prof } = await myProfile();
       const { error } = await supabase.from('sds_documents').insert({ ...payload, company_id: prof?.company_id, is_active: true });
       setSaving(false);
       if (error) return Alert.alert('Error', error.message);
