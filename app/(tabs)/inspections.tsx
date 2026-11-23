@@ -4,10 +4,11 @@ import {
   Modal, ScrollView, TextInput, TouchableOpacity, Alert, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, router, useFocusEffect } from 'expo-router';
+import { useNavigation, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus';
 import { currentUser, guardedLoad, myProfile } from '@/lib/session';
 import { todayISO, formatDate } from '@/lib/dates';
 import { templateToSections, defaultSections } from '@/constants/inspectionSections';
@@ -57,7 +58,7 @@ export default function InspectionsScreen() {
       .from('inspections')
       .select('id, title, date, location, status, score, profiles(name)')
       .order('date', { ascending: false });
-    setItems((data as any[]) ?? []);
+    if (data) setItems(data as any[]);
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -65,10 +66,8 @@ export default function InspectionsScreen() {
   // The spinner always clears, even if a request fails or times out.
   const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
-  useEffect(() => { load(); }, [load]);
-  // Refresh when returning from the detail screen so a just-completed inspection
-  // shows its updated status immediately.
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  // Reloads when you return to this screen or bring the app back to the front.
+  useRefreshOnFocus(load);
 
   // Load custom inspection templates (RLS returns global + own-company) when the
   // create sheet opens, so a new inspection can start from a company template.

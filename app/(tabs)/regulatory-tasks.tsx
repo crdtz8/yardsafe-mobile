@@ -9,6 +9,7 @@ import { promptForPhoto } from '@/lib/photos';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus';
 import { currentUser, guardedLoad, myProfile } from '@/lib/session';
 import { daysUntil, addDaysISO, todayISO } from '@/lib/dates';
 import { uploadImageBase64 } from '@/lib/storage';
@@ -105,19 +106,20 @@ export default function RegulatoryTasksScreen() {
     if (user) {
       setMyId(user.id);
       const { data: prof } = await myProfile();
-      setIsMgr(MGR_ROLES.includes((prof as any)?.role));
+      if (prof) setIsMgr(MGR_ROLES.includes(prof.role));
     }
-    const [{ data: it }, { data: ppl }] = await Promise.all([
+    const [{ data: it, error: itemsError }, { data: ppl }] = await Promise.all([
       supabase.from('compliance_items').select('*').eq('is_active', true),
       supabase.from('profiles').select('id, name').eq('is_active', true).order('name'),
     ]);
+    if (itemsError) throw itemsError;        // failed refresh: keep what is on screen
     const sorted = ((it as Item[]) ?? []).sort((a, b) => {
       const pa = DUE_META[dueStatus(a)].priority, pb = DUE_META[dueStatus(b)].priority;
       if (pa !== pb) return pa - pb;
       return (a.next_due_date || '9999') < (b.next_due_date || '9999') ? -1 : 1;
     });
     setItems(sorted);
-    setPeople((ppl as Person[]) ?? []);
+    if (ppl) setPeople(ppl as Person[]);
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -125,7 +127,8 @@ export default function RegulatoryTasksScreen() {
   // The spinner always clears, even if a request fails or times out.
   const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
-  useEffect(() => { load(); }, [load]);
+  // Reloads when you return to this screen or bring the app back to the front.
+  useRefreshOnFocus(load);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -143,7 +146,7 @@ export default function RegulatoryTasksScreen() {
     setComps([]);
     const { data } = await supabase.from('compliance_completions').select('*')
       .eq('item_id', item.id).order('completed_date', { ascending: false }).limit(50);
-    setComps((data as Completion[]) ?? []);
+    if (data) setComps(data as Completion[]);
   };
 
   if (loading) return <View style={s.center}><ActivityIndicator color={colors.greenMd} size="large" /></View>;

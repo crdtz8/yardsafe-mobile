@@ -8,6 +8,7 @@ import { useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus';
 import { currentUser, guardedLoad, myProfile } from '@/lib/session';
 import { formatDate } from '@/lib/dates';
 
@@ -78,7 +79,7 @@ export default function CorrectiveScreen() {
       .from('corrective_actions')
       .select('id, title, description, status, priority, due_date, assigned_to, assignee:profiles!assigned_to(name)')
       .order('due_date', { ascending: true, nullsFirst: false });
-    setItems((data as any[]) ?? []);
+    if (data) setItems(data as any[]);
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -86,7 +87,8 @@ export default function CorrectiveScreen() {
   // The spinner always clears, even if a request fails or times out.
   const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
-  useEffect(() => { load(); }, [load]);
+  // Reloads when you return to this screen or bring the app back to the front.
+  useRefreshOnFocus(load);
 
   useEffect(() => {
     if (!showModal) return;

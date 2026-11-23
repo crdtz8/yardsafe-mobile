@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useLayoutEffect } from 'react';
+import { useEffect, useState, useCallback, useLayoutEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   ActivityIndicator, RefreshControl, Alert,
@@ -7,6 +7,7 @@ import { useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus';
 import { currentUser, guardedLoad } from '@/lib/session';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -147,6 +148,10 @@ export default function NotificationsScreen() {
 
   // ─── Data loading ───────────────────────────────────────────────────────────
 
+  // Only the first load reports a failure; a quiet background refresh that
+  // fails (weak signal) keeps showing the list already on screen.
+  const loadedOnce = useRef(false);
+
   const loadScreen = useCallback(async () => {
     try {
       const user = await currentUser();
@@ -161,8 +166,9 @@ export default function NotificationsScreen() {
 
       if (error) throw error;
       setItems((data as NotifRow[]) ?? []);
+      loadedOnce.current = true;
     } catch (err: any) {
-      Alert.alert('Error', err?.message ?? 'Failed to load notifications.');
+      if (!loadedOnce.current) Alert.alert('Error', err?.message ?? 'Failed to load notifications.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -172,7 +178,8 @@ export default function NotificationsScreen() {
   // The spinner always clears, even if a request fails or times out.
   const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
-  useEffect(() => { load(); }, [load]);
+  // Reloads when you return to this screen or bring the app back to the front.
+  useRefreshOnFocus(load);
 
   // ─── Actions ────────────────────────────────────────────────────────────────
 

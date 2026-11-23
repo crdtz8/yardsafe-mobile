@@ -8,6 +8,7 @@ import { useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus';
 import { guardedLoad } from '@/lib/session';
 import { daysUntil, formatDate } from '@/lib/dates';
 
@@ -82,7 +83,7 @@ export default function CertificationsScreen() {
         cert_type:certification_types!employee_certifications_cert_type_id_fkey(name, is_required),
         cert_number, issue_date, expiration_date`)
       .order('expiration_date', { ascending: true, nullsFirst: false });
-    setItems((data as any[]) ?? []);
+    if (data) setItems(data as any[]);
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -90,7 +91,8 @@ export default function CertificationsScreen() {
   // The spinner always clears, even if a request fails or times out.
   const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
-  useEffect(() => { load(); }, [load]);
+  // Reloads when you return to this screen or bring the app back to the front.
+  useRefreshOnFocus(load);
 
   useEffect(() => {
     if (!showModal) return;
@@ -98,8 +100,8 @@ export default function CertificationsScreen() {
       supabase.from('profiles').select('id, name').is('archived_at', null).order('name'),
       supabase.from('certification_types').select('id, name').order('name'),
     ]).then(([{ data: emps }, { data: types }]) => {
-      setEmployees((emps as any[]) ?? []);
-      setCertTypes((types as any[]) ?? []);
+      if (emps) setEmployees(emps as any[]);
+      if (types) setCertTypes(types as any[]);
     });
   }, [showModal]);
 

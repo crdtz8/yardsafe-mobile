@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus';
 import { currentUser, guardedLoad } from '@/lib/session';
 import { getProfile, getCompany, signOut } from '@/lib/auth';
 import NotificationPermissionBanner from '@/components/NotificationPermissionBanner';
@@ -228,7 +229,8 @@ export default function DashboardScreen() {
   // The spinner always clears, even if a request fails or times out.
   const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
-  useEffect(() => { load(); }, [load]);
+  // Reloads when you return to this screen or bring the app back to the front.
+  useRefreshOnFocus(load);
 
   const onRefresh = () => { setRefreshing(true); load(); };
 

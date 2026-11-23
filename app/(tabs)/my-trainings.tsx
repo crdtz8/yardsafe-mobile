@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus';
 import { currentUser, guardedLoad, myProfile } from '@/lib/session';
 import { parseDate, daysUntil } from '@/lib/dates';
 
@@ -41,12 +42,14 @@ export default function MyTrainingsScreen() {
       .select('training_id, due_date, trainings(id, title, type, duration, due_date, video_url, doc_url, quiz_enabled, categories(id, name))')
       .eq('user_id', user.id);
 
-    if (error) console.warn('training_assignments error:', error.message);
+    if (error) throw error;                 // failed refresh: keep what is on screen
 
-    const { data: completions } = await supabase
+    const { data: completions, error: completionsError } = await supabase
       .from('training_completions')
       .select('training_id')
       .eq('user_id', user.id);
+    // Without this list, finished trainings would show up as still to do.
+    if (completionsError) throw completionsError;
 
     const completedIds = new Set((completions ?? []).map((c: any) => c.training_id));
     const pending = (assignments ?? []).filter((a: any) => !completedIds.has(a.training_id));
@@ -68,7 +71,8 @@ export default function MyTrainingsScreen() {
   // The spinner always clears, even if a request fails or times out.
   const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
-  useEffect(() => { load(); }, [load]);
+  // Reloads when you return to this screen or bring the app back to the front.
+  useRefreshOnFocus(load);
 
   const categories = useMemo(() => {
     const seen = new Map<string, string>();

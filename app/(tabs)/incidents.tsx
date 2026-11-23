@@ -10,6 +10,7 @@ import { promptForPhoto } from '@/lib/photos';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus';
 import { currentUser, guardedLoad, myProfile } from '@/lib/session';
 import { todayISO } from '@/lib/dates';
 import { uploadImageBase64 } from '@/lib/storage';
@@ -239,7 +240,7 @@ export default function IncidentsScreen() {
       if (!prof?.company_id) return;
       const { data } = await supabase.from('profiles').select('id, name')
         .eq('company_id', prof.company_id).eq('is_active', true).order('name');
-      setEmployees((data as Employee[]) ?? []);
+      if (data) setEmployees(data as Employee[]);
     })();
   }, [showModal]);
 
@@ -275,7 +276,7 @@ export default function IncidentsScreen() {
       .from('incidents')
       .select('id, title, incident_type, incident_date, severity, status')
       .order('incident_date', { ascending: false });
-    setItems((data as Incident[]) ?? []);
+    if (data) setItems(data as Incident[]);
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -283,7 +284,8 @@ export default function IncidentsScreen() {
   // The spinner always clears, even if a request fails or times out.
   const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
-  useEffect(() => { load(); }, [load]);
+  // Reloads when you return to this screen or bring the app back to the front.
+  useRefreshOnFocus(load);
 
   const openEdit = async (item: Incident) => {
     // Pull the full row so every field (and the custom-section snapshot) is present.

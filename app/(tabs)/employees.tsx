@@ -8,6 +8,7 @@ import { useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus';
 import { guardedLoad } from '@/lib/session';
 import { callAdminApi, callNotificationsApi, genTempPassword } from '@/lib/api';
 
@@ -70,7 +71,7 @@ export default function EmployeesScreen() {
       .select('id, name, email, role, phone')
       .is('archived_at', null)
       .order('name');
-    setItems((data as Employee[]) ?? []);
+    if (data) setItems(data as Employee[]);
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -78,7 +79,8 @@ export default function EmployeesScreen() {
   // The spinner always clears, even if a request fails or times out.
   const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
-  useEffect(() => { load(); }, [load]);
+  // Reloads when you return to this screen or bring the app back to the front.
+  useRefreshOnFocus(load);
 
   const handleSave = async () => {
     if (!draft.name.trim()) return Alert.alert('Required', 'Enter the employee\'s name.');

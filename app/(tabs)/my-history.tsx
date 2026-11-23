@@ -5,6 +5,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus';
 import { currentUser, guardedLoad } from '@/lib/session';
 
 type Completion = {
@@ -28,7 +29,7 @@ export default function MyHistoryScreen() {
       .select('id, completed_at, score, trainings(title, type)')
       .eq('user_id', user.id)
       .order('completed_at', { ascending: false });
-    setItems((data as any[]) ?? []);
+    if (data) setItems(data as any[]);
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -36,7 +37,8 @@ export default function MyHistoryScreen() {
   // The spinner always clears, even if a request fails or times out.
   const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
-  useEffect(() => { load(); }, [load]);
+  // Reloads when you return to this screen or bring the app back to the front.
+  useRefreshOnFocus(load);
 
   if (loading) return <View style={s.center}><ActivityIndicator color={colors.greenMd} size="large" /></View>;
 

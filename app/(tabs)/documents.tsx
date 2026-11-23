@@ -8,6 +8,7 @@ import { useNavigation, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus';
 import { currentUser, myProfile } from '@/lib/session';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -113,7 +114,7 @@ export default function DocumentsScreen() {
       .select('id, title, category, version, file_url, requires_acknowledgment, created_at')
       .eq('is_active', true)
       .order('title');
-    setDocs((data as Doc[]) ?? []);
+    if (data) setDocs(data as Doc[]);
     setDocsLoading(false);
     setRefreshing(false);
   }, []);
@@ -126,12 +127,14 @@ export default function DocumentsScreen() {
       .select('id, product_name, manufacturer, chemical_family, signal_word, cas_number, locations, file_url, created_at')
       .eq('is_active', true)
       .order('product_name');
-    setSdsItems((data as SdsDoc[]) ?? []);
+    if (data) setSdsItems(data as SdsDoc[]);
     setSdsLoading(false);
     setRefreshing(false);
   }, []);
 
-  useEffect(() => { loadDocs(); loadSds(); }, [loadDocs, loadSds]);
+  // Reloads when you return to this screen or bring the app back to the front.
+  const loadAll = useCallback(() => { loadDocs(); loadSds(); }, [loadDocs, loadSds]);
+  useRefreshOnFocus(loadAll);
 
   const onRefresh = () => { setRefreshing(true); loadDocs(); loadSds(); };
 

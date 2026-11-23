@@ -8,6 +8,7 @@ import { useNavigation, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus';
 import { currentUser, guardedLoad, myProfile } from '@/lib/session';
 
 type Equipment = {
@@ -74,7 +75,7 @@ export default function EquipmentScreen() {
       .from('equipment')
       .select('id, name, equipment_type, make, model, status, location')
       .order('name');
-    setItems((data as Equipment[]) ?? []);
+    if (data) setItems(data as Equipment[]);
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -82,7 +83,8 @@ export default function EquipmentScreen() {
   // The spinner always clears, even if a request fails or times out.
   const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
-  useEffect(() => { load(); }, [load]);
+  // Reloads when you return to this screen or bring the app back to the front.
+  useRefreshOnFocus(load);
 
   const handleSave = async () => {
     if (!draft.name.trim()) return Alert.alert('Required', 'Enter equipment name.');

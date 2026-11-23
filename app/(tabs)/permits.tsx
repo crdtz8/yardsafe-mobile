@@ -8,6 +8,7 @@ import { useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus';
 import { currentUser, guardedLoad, myProfile } from '@/lib/session';
 
 type Permit = {
@@ -156,9 +157,11 @@ export default function PermitsScreen() {
     if (!user) { setLoading(false); setRefreshing(false); return; }
 
     const { data: prof } = await myProfile();
+    // Failed refresh: keep what is on screen (do not fall back to "employee").
+    if (!prof) throw new Error('Could not load your profile');
 
-    const cid  = prof?.company_id ?? '';
-    const r    = prof?.role ?? 'employee';
+    const cid  = prof.company_id;
+    const r    = prof.role;
     setUserId(user.id);
     setCompanyId(cid);
     setRole(r);
@@ -175,14 +178,15 @@ export default function PermitsScreen() {
       query = query.eq('status', 'active');
     }
 
-    const { data: permits } = await query;
-    setItems((permits as Permit[]) ?? []);
+    const { data: permits, error: permitsError } = await query;
+    if (permitsError) throw permitsError;
+    if (permits) setItems(permits as Permit[]);
 
     const { data: ackData } = await supabase
       .from('permit_acknowledgments')
       .select('*')
       .eq('employee_id', user.id);
-    setAcks((ackData as PermitAck[]) ?? []);
+    if (ackData) setAcks(ackData as PermitAck[]);
 
     setLoading(false);
     setRefreshing(false);
@@ -191,7 +195,8 @@ export default function PermitsScreen() {
   // The spinner always clears, even if a request fails or times out.
   const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
-  useEffect(() => { load(); }, [load]);
+  // Reloads when you return to this screen or bring the app back to the front.
+  useRefreshOnFocus(load);
 
   const closeModal = () => {
     setShowCreate(false);

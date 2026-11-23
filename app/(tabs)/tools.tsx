@@ -8,6 +8,7 @@ import { useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus';
 import { currentUser, guardedLoad } from '@/lib/session';
 import { findToolByTag } from '@/lib/assetTags';
 import { hasBarcodeScanner } from '@/lib/scanner';
@@ -66,14 +67,14 @@ export default function ToolsScreen() {
       // database check that guards tool edits, so the app and DB always agree.
       // Checking tools in and out is open to everyone in the company.
       const { data: allowed } = await supabase.rpc('can_manage_tools');
-      setCanManage(allowed === true);
+      if (typeof allowed === 'boolean') setCanManage(allowed);   // failed check: keep the current answer
     }
     const [{ data: tl }, { data: ppl }] = await Promise.all([
       supabase.from('tools').select('*').eq('is_active', true).order('name'),
       supabase.from('profiles').select('id, name').eq('is_active', true).order('name'),
     ]);
-    setTools((tl as Tool[]) ?? []);
-    setPeople((ppl as Person[]) ?? []);
+    if (tl) setTools(tl as Tool[]);
+    if (ppl) setPeople(ppl as Person[]);
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -81,7 +82,8 @@ export default function ToolsScreen() {
   // The spinner always clears, even if a request fails or times out.
   const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
-  useEffect(() => { load(); }, [load]);
+  // Reloads when you return to this screen or bring the app back to the front.
+  useRefreshOnFocus(load);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -99,7 +101,7 @@ export default function ToolsScreen() {
     setHistory([]);
     const { data } = await supabase.from('tool_transactions').select('*')
       .eq('tool_id', tool.id).order('created_at', { ascending: false }).limit(50);
-    setHistory((data as Txn[]) ?? []);
+    if (data) setHistory(data as Txn[]);
   };
 
   // After a scan: open the matching tool (shows who has it + Check Out/In).

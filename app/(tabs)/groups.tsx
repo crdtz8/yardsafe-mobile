@@ -4,10 +4,11 @@ import {
   Modal, ScrollView, TextInput, TouchableOpacity, Alert, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, router, useFocusEffect } from 'expo-router';
+import { useNavigation, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus';
 import { guardedLoad } from '@/lib/session';
 import { fetchGroups, createGroup, type Group } from '@/lib/groups';
 
@@ -34,12 +35,14 @@ export default function GroupsScreen() {
 
   const loadScreen = useCallback(async () => {
     const { data } = await fetchGroups();
-    const gs = (data as Group[]) ?? [];
+    if (!data) return;                      // failed refresh: keep what is on screen
+    const gs = data as Group[];
     setGroups(gs);
     // Member counts per group
     const entries = await Promise.all(gs.map(async g => {
-      const { count } = await supabase.from('profiles')
+      const { count, error } = await supabase.from('profiles')
         .select('id', { count: 'exact', head: true }).eq('group_id', g.id).is('archived_at', null);
+      if (error) throw error;               // keep the old counts rather than show 0
       return [g.id, count ?? 0] as [string, number];
     }));
     setCounts(Object.fromEntries(entries));
@@ -50,9 +53,8 @@ export default function GroupsScreen() {
   // The spinner always clears, even if a request fails or times out.
   const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
-  useEffect(() => { load(); }, [load]);
-  // Refresh counts when returning from the detail screen.
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  // Reloads when you return to this screen or bring the app back to the front.
+  useRefreshOnFocus(load);
 
   const handleCreate = async () => {
     if (!name.trim()) return Alert.alert('Required', 'Enter a group name.');

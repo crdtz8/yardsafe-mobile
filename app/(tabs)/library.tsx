@@ -9,6 +9,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus';
 import { guardedLoad } from '@/lib/session';
 import { addDaysISO } from '@/lib/dates';
 import { callAdminApi } from '@/lib/api';
@@ -54,8 +55,8 @@ export default function LibraryScreen() {
         .order('title'),
       supabase.from('categories').select('id, name').order('name'),
     ]);
-    setItems((courses as any[]) ?? []);
-    setCategories((cats as Category[]) ?? []);
+    if (courses) setItems(courses as any[]);
+    if (cats) setCategories(cats as Category[]);
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -63,7 +64,8 @@ export default function LibraryScreen() {
   // The spinner always clears, even if a request fails or times out.
   const load = useCallback(() => guardedLoad(loadScreen, () => { setLoading(false); setRefreshing(false); }), [loadScreen]);
 
-  useEffect(() => { load(); }, [load]);
+  // Reloads when you return to this screen or bring the app back to the front.
+  useRefreshOnFocus(load);
 
   useEffect(() => {
     if (!assignFor) return;
